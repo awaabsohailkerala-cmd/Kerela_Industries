@@ -1,5 +1,7 @@
 from pathlib import Path
 from dotenv import load_dotenv
+import os
+from datetime import timedelta
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -18,10 +20,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'rest_framework_simplejwt',
+    "rest_framework_simplejwt.token_blacklist",
 ]
 
 EXTERNAL_APPS = [
-    
+    'users',
 ]
 
 INSTALLED_APPS += EXTERNAL_APPS
@@ -92,3 +97,30 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
+
+
+# ---- Custom user model ----
+AUTH_USER_MODEL = "users.User"
+ 
+# ---- DRF settings ----
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
+}
+ 
+# ---- SimpleJWT settings ----
+
+ 
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,           # new refresh token on every refresh call
+    "BLACKLIST_AFTER_ROTATION": True,        # old refresh token is blacklisted after rotation
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_ID_FIELD": "email",               # our PK is email, not id
+    "USER_ID_CLAIM": "user_email",
+}
