@@ -24,11 +24,69 @@ from .selectors import (
 # ---------------------------------------------------------------------------
 
 def _soft_delete(instance, user) -> None:
-    """DRY soft delete — reused across all models in this app."""
+    """DRY soft delete - reused across all models in this app."""
     instance.is_deleted = True
     instance.deleted_at = timezone.now()
     instance.deleted_by = user
     instance.save(update_fields=["is_deleted", "deleted_at", "deleted_by"])
+
+
+def _sync_invoice_payment_summary(invoice) -> None:
+    """
+    Recomputes and saves all payment tracking fields on an Invoice.
+    Called after every Payment create/delete and after return acceptance.
+    Single source of truth for payment status logic.
+
+    cash_received   = sum of cash payments (positive only)
+    credit_received = sum of credit payments (positive only)
+    total_paid      = cash + credit (excludes negative credit notes from returns)
+    remaining       = subtotal - total_paid (floored at 0)
+    payment_status  = unpaid / partial / paid
+    """
+    from decimal import Decimal
+    from .models import Payment
+
+    payments = Payment.objects.filter(invoice=invoice, is_deleted=False)
+
+    cash_received   = Decimal("0")
+    credit_received = Decimal("0")
+
+    for p in payments:
+        if p.amount <= 0:
+            # Negative entries are credit notes from returns - reduce remaining
+            # They are NOT added to received totals
+            continue
+        if p.method == Payment.Method.CASH:
+            cash_received += p.amount
+        else:
+            credit_received += p.amount
+
+    # Credit note adjustments (negative payments from returns)
+    credit_notes = sum(
+        abs(p.amount) for p in payments if p.amount < 0
+    )
+
+    total_paid       = cash_received + credit_received
+    # remaining = what customer still owes after payments and any credit notes
+    raw_remaining    = invoice.subtotal - total_paid - Decimal(str(credit_notes))
+    remaining_amount = max(Decimal("0"), raw_remaining)
+
+    if remaining_amount <= 0:
+        payment_status = invoice.PaymentStatus.PAID
+    elif total_paid > 0:
+        payment_status = invoice.PaymentStatus.PARTIAL
+    else:
+        payment_status = invoice.PaymentStatus.UNPAID
+
+    invoice.cash_received    = cash_received
+    invoice.credit_received  = credit_received
+    invoice.total_paid       = total_paid
+    invoice.remaining_amount = remaining_amount
+    invoice.payment_status   = payment_status
+    invoice.save(update_fields=[
+        "cash_received", "credit_received", "total_paid",
+        "remaining_amount", "payment_status",
+    ])
 
 
 def _generate_bill_number() -> str:
@@ -441,7 +499,7 @@ def create_payment(
             )
         })
 
-    return Payment.objects.create(
+    payment = Payment.objects.create(
         invoice=invoice,
         amount=amount,
         method=method,
@@ -450,11 +508,15 @@ def create_payment(
         created_by=user,
         updated_by=user,
     )
+    _sync_invoice_payment_summary(invoice)
+    return payment
 
 
 def delete_payment(*, payment_id: int, user) -> None:
     payment = get_payment_by_id(payment_id)
+    invoice = payment.invoice
     _soft_delete(payment, user)
+    _sync_invoice_payment_summary(invoice)
 
 
 # ---------------------------------------------------------------------------
@@ -599,5 +661,6 @@ def accept_return(*, return_id: int, user) -> Return:
         created_by=user,
         updated_by=user,
     )
+    _sync_invoice_payment_summary(invoice)
 
     return return_record

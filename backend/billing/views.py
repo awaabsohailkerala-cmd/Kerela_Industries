@@ -283,3 +283,66 @@ class ReturnAcceptView(generics.UpdateAPIView):
     def post(self, request, *args, **kwargs):
         return_record = accept_return(return_id=self.kwargs["pk"], user=request.user)
         return Response(ReturnReadSerializer(return_record).data, status=status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------------
+# Payment summary views
+# ---------------------------------------------------------------------------
+
+from .selectors import (
+    get_invoice_payment_summary,
+    get_customer_outstanding,
+    get_customers_with_outstanding,
+)
+from .serializers import (
+    CustomerOutstandingSerializer,
+    CustomerWithOutstandingSerializer,
+    InvoicePaymentSummarySerializer,
+)
+
+
+class InvoicePaymentSummaryView(generics.RetrieveAPIView):
+    """
+    GET /billing/invoices/<pk>/payment-summary/
+    Returns full payment breakdown for a single invoice:
+      - subtotal, cash_received, credit_received, total_paid,
+        remaining_amount, payment_status, all payment records.
+    Accessible to all authenticated users.
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = InvoicePaymentSummarySerializer
+
+    def get_object(self):
+        return get_invoice_payment_summary(self.kwargs["pk"])
+
+
+class CustomerOutstandingView(generics.RetrieveAPIView):
+    """
+    GET /billing/customers/<pk>/outstanding/
+    Returns total outstanding balance for a specific customer
+    across all their confirmed invoices.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        summary = get_customer_outstanding(customer_id=self.kwargs["pk"])
+        serializer = CustomerOutstandingSerializer(summary)
+        return Response(serializer.data)
+
+
+class CustomerOutstandingListView(generics.ListAPIView):
+    """
+    GET /billing/customers/outstanding/
+    Lists all customers who have a remaining balance > 0.
+
+    Query params:
+        min_remaining : float — filter customers owing at least this amount
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = CustomerWithOutstandingSerializer
+
+    def get_queryset(self):
+        min_remaining = self.request.query_params.get("min_remaining")
+        return get_customers_with_outstanding(
+            min_remaining=float(min_remaining) if min_remaining else None,
+        )

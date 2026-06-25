@@ -128,3 +128,83 @@ def get_available_purchase_batches(product_id: int) -> QuerySet:
         )
         .order_by("created_at")   # oldest first = FIFO
     )
+
+
+# ---------------------------------------------------------------------------
+# Payment summary selectors
+# ---------------------------------------------------------------------------
+
+def get_invoice_payment_summary(invoice_id: int) -> Invoice:
+    """
+    Returns a single invoice with full payment breakdown.
+    cash_received, credit_received, total_paid, remaining_amount
+    are stored fields updated on every payment event.
+    """
+    return get_object_or_404(
+        Invoice.objects.select_related("customer").prefetch_related(
+            "payments", "items__product",
+        ),
+        pk=invoice_id,
+        is_deleted=False,
+    )
+
+
+def get_customer_outstanding(customer_id: int) -> dict:
+    """
+    Returns a payment summary across ALL confirmed invoices for a customer.
+    Aggregates: total billed, total paid (cash + credit), total remaining.
+    """
+    from django.db.models import Sum
+    from decimal import Decimal
+
+    invoices = Invoice.objects.filter(
+        customer_id=customer_id,
+        is_deleted=False,
+        status__in=[Invoice.Status.CONFIRMED, Invoice.Status.PARTIAL],
+    )
+
+    agg = invoices.aggregate(
+        total_billed=Sum("subtotal"),
+        total_cash=Sum("cash_received"),
+        total_credit=Sum("credit_received"),
+        total_paid=Sum("total_paid"),
+        total_remaining=Sum("remaining_amount"),
+    )
+
+    return {
+        "customer_id"    : customer_id,
+        "total_billed"   : agg["total_billed"]   or Decimal("0"),
+        "total_cash"     : agg["total_cash"]      or Decimal("0"),
+        "total_credit"   : agg["total_credit"]    or Decimal("0"),
+        "total_paid"     : agg["total_paid"]      or Decimal("0"),
+        "total_remaining": agg["total_remaining"] or Decimal("0"),
+    }
+
+
+def get_customers_with_outstanding(*, min_remaining: float = None) -> "QuerySet":
+    """
+    Lists customers who have outstanding balances.
+    Optionally filter by minimum remaining amount.
+    Uses DB-level aggregation for efficiency.
+    """
+    from django.db.models import Sum, Q
+    from django.db.models.functions import Coalesce
+    from django.db.models import DecimalField, Value
+
+    qs = Customer.objects.filter(is_deleted=False).annotate(
+        outstanding=Coalesce(
+            Sum(
+                "invoices__remaining_amount",
+                filter=Q(
+                    invoices__is_deleted=False,
+                    invoices__status__in=[Invoice.Status.CONFIRMED, Invoice.Status.PARTIAL],
+                ),
+            ),
+            Value(0, output_field=DecimalField()),
+        )
+    ).filter(outstanding__gt=0)
+
+    if min_remaining is not None:
+        qs = qs.filter(outstanding__gte=min_remaining)
+
+    return qs.order_by("-outstanding")

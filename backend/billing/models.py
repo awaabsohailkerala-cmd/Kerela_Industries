@@ -87,10 +87,27 @@ class Invoice(AuditMixin):
     )
     confirmed_at = models.DateTimeField(null=True, blank=True)
 
-    # Totals — computed and stored on confirmation
+    class PaymentStatus(models.TextChoices):
+        UNPAID  = "unpaid",  "Unpaid"
+        PARTIAL = "partial", "Partial"
+        PAID    = "paid",    "Paid"
+
+    # Totals - computed and stored on confirmation
     subtotal      = models.DecimalField(max_digits=18, decimal_places=4, default=0)
     total_cogs    = models.DecimalField(max_digits=18, decimal_places=4, default=0)
     gross_profit  = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+
+    # Payment tracking - updated automatically on every Payment create/delete
+    cash_received    = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    credit_received  = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    total_paid       = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    remaining_amount = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    payment_status   = models.CharField(
+        max_length=10,
+        choices=PaymentStatus.choices,
+        default=PaymentStatus.UNPAID,
+        db_index=True,
+    )
 
     class Meta:
         verbose_name = "Invoice"

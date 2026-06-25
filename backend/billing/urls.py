@@ -2,10 +2,13 @@ from django.urls import path
 
 from .views import (
     CustomerListCreateView,
+    CustomerOutstandingListView,
+    CustomerOutstandingView,
     CustomerRetrieveUpdateDestroyView,
     DraftInvoiceListView,
     InvoiceConfirmView,
     InvoiceListCreateView,
+    InvoicePaymentSummaryView,
     InvoiceRetrieveUpdateDestroyView,
     PaymentDestroyView,
     PaymentListCreateView,
@@ -31,4 +34,9 @@ urlpatterns = [
     # Returns (nested under invoice + standalone accept)
     path("invoices/<int:invoice_id>/returns/", ReturnListCreateView.as_view(), name="return-list-create"),
     path("returns/<int:pk>/accept/", ReturnAcceptView.as_view(), name="return-accept"),
+
+    # Payment summaries
+    path("invoices/<int:pk>/payment-summary/", InvoicePaymentSummaryView.as_view(), name="invoice-payment-summary"),
+    path("customers/outstanding/", CustomerOutstandingListView.as_view(), name="customer-outstanding-list"),
+    path("customers/<int:pk>/outstanding/", CustomerOutstandingView.as_view(), name="customer-outstanding"),
 ]

@@ -1,6 +1,107 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from .models import Customer, Invoice, InvoiceItem, Payment, Return, ReturnItem
+
+
+# ---------------------------------------------------------------------------
+# Draft preview helper — pure read, zero DB writes
+# ---------------------------------------------------------------------------
+
+def _build_draft_preview(invoice: Invoice) -> dict | None:
+    """
+    Computes a live price preview for DRAFT invoices only.
+    Reads current rate list price and oldest available purchase cost (FIFO peek).
+    Never writes anything — purely informational.
+    Returns None for non-draft invoices (confirmed invoices have real numbers).
+    """
+    if invoice.status != Invoice.Status.DRAFT:
+        return None
+
+    from purchases.models import Purchase
+
+    preview_items     = []
+    total_subtotal    = Decimal("0")
+    total_cogs        = Decimal("0")
+    has_missing_rate  = False
+    has_missing_stock = False
+
+    for item in invoice.items.all():
+        product = item.product
+
+        # --- Selling price from rate list ---
+        try:
+            selling_price = product.rate.selling_price
+        except Exception:
+            selling_price    = None
+            has_missing_rate = True
+
+        # --- FIFO peek: blended cost from oldest batches (read-only) ---
+        batches = (
+            Purchase.objects
+            .filter(product=product, is_deleted=False, remaining_quantity__gt=0)
+            .order_by("created_at")
+        )
+        available_qty  = sum(b.remaining_quantity for b in batches)
+        qty_to_consume = item.quantity
+        remaining      = qty_to_consume
+        total_cost     = Decimal("0")
+        stock_ok       = available_qty >= qty_to_consume
+
+        if not stock_ok:
+            has_missing_stock = True
+            cogs_per_unit     = None
+        else:
+            for batch in batches:
+                if remaining <= 0:
+                    break
+                consume     = min(batch.remaining_quantity, remaining)
+                total_cost += consume * batch.unit_price
+                remaining  -= consume
+            cogs_per_unit = (
+                total_cost / Decimal(str(qty_to_consume))
+                if qty_to_consume else Decimal("0")
+            )
+
+        # --- Line totals ---
+        if selling_price is not None and cogs_per_unit is not None:
+            line_total      = selling_price * item.quantity
+            line_cogs       = cogs_per_unit * item.quantity
+            line_profit     = line_total - line_cogs
+            total_subtotal += line_total
+            total_cogs     += line_cogs
+        else:
+            line_total = line_cogs = line_profit = None
+
+        p = Decimal("0.0001")
+        preview_items.append({
+            "invoice_item_id"    : item.id,
+            "product_name"       : product.name,
+            "product_code"       : product.code,
+            "quantity"           : item.quantity,
+            "available_stock"    : available_qty,
+            "selling_price"      : str(selling_price) if selling_price is not None else None,
+            "cogs_per_unit"      : str(cogs_per_unit.quantize(p)) if cogs_per_unit is not None else None,
+            "line_total"         : str(line_total.quantize(p)) if line_total is not None else None,
+            "line_cogs"          : str(line_cogs.quantize(p)) if line_cogs is not None else None,
+            "line_profit"        : str(line_profit.quantize(p)) if line_profit is not None else None,
+            "rate_missing"       : selling_price is None,
+            "stock_insufficient" : not stock_ok,
+        })
+
+    p = Decimal("0.0001")
+    return {
+        "items"        : preview_items,
+        "subtotal"     : str(total_subtotal.quantize(p)),
+        "total_cogs"   : str(total_cogs.quantize(p)),
+        "gross_profit" : str((total_subtotal - total_cogs).quantize(p)),
+        "warnings"     : {
+            "missing_rate" : has_missing_rate,
+            "missing_stock": has_missing_stock,
+        },
+        "note": "Preview only — no stock reserved, no prices committed. Confirm to finalise.",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -38,8 +139,8 @@ class CustomerWriteSerializer(serializers.ModelSerializer):
 # ---------------------------------------------------------------------------
 
 class InvoiceItemReadSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source="product.name", read_only=True)
-    product_code = serializers.CharField(source="product.code", read_only=True)
+    product_name        = serializers.CharField(source="product.name", read_only=True)
+    product_code        = serializers.CharField(source="product.code", read_only=True)
     returnable_quantity = serializers.IntegerField(read_only=True)
 
     class Meta:
@@ -64,24 +165,33 @@ class InvoiceItemWriteSerializer(serializers.Serializer):
 # ---------------------------------------------------------------------------
 
 class InvoiceReadSerializer(serializers.ModelSerializer):
-    customer    = CustomerReadSerializer(read_only=True)
-    items       = InvoiceItemReadSerializer(many=True, read_only=True)
-    created_by  = serializers.StringRelatedField(read_only=True)
-    updated_by  = serializers.StringRelatedField(read_only=True)
-    confirmed_by = serializers.StringRelatedField(read_only=True)
-    deleted_by  = serializers.StringRelatedField(read_only=True)
+    customer               = CustomerReadSerializer(read_only=True)
+    items                  = InvoiceItemReadSerializer(many=True, read_only=True)
+    created_by             = serializers.StringRelatedField(read_only=True)
+    updated_by             = serializers.StringRelatedField(read_only=True)
+    confirmed_by           = serializers.StringRelatedField(read_only=True)
+    deleted_by             = serializers.StringRelatedField(read_only=True)
+    draft_preview          = serializers.SerializerMethodField()
+    payment_status_display = serializers.CharField(source="get_payment_status_display", read_only=True)
 
     class Meta:
         model = Invoice
         fields = [
             "id", "bill_number", "customer", "status",
             "subtotal", "total_cogs", "gross_profit",
+            # payment summary inline on every invoice response
+            "cash_received", "credit_received", "total_paid",
+            "remaining_amount", "payment_status", "payment_status_display",
+            "draft_preview",
             "items",
             "confirmed_by", "confirmed_at",
             "created_by", "updated_by", "deleted_by",
             "created_at", "updated_at", "deleted_at",
         ]
         read_only_fields = fields
+
+    def get_draft_preview(self, obj):
+        return _build_draft_preview(obj)
 
 
 class InvoiceCreateSerializer(serializers.Serializer):
@@ -109,7 +219,7 @@ class InvoiceUpdateSerializer(serializers.Serializer):
 # ---------------------------------------------------------------------------
 
 class PaymentReadSerializer(serializers.ModelSerializer):
-    created_by = serializers.StringRelatedField(read_only=True)
+    created_by     = serializers.StringRelatedField(read_only=True)
     method_display = serializers.CharField(source="get_method_display", read_only=True)
 
     class Meta:
@@ -167,9 +277,9 @@ class ReturnItemReadSerializer(serializers.ModelSerializer):
 
 
 class ReturnReadSerializer(serializers.ModelSerializer):
-    items       = ReturnItemReadSerializer(many=True, read_only=True)
-    created_by  = serializers.StringRelatedField(read_only=True)
-    accepted_by = serializers.StringRelatedField(read_only=True)
+    items               = ReturnItemReadSerializer(many=True, read_only=True)
+    created_by          = serializers.StringRelatedField(read_only=True)
+    accepted_by         = serializers.StringRelatedField(read_only=True)
     invoice_bill_number = serializers.CharField(source="invoice.bill_number", read_only=True)
 
     class Meta:
@@ -181,4 +291,51 @@ class ReturnReadSerializer(serializers.ModelSerializer):
             "accepted_by", "accepted_at",
             "created_by", "created_at", "updated_at",
         ]
+        read_only_fields = fields
+
+
+# ---------------------------------------------------------------------------
+# Payment summary serializers
+# ---------------------------------------------------------------------------
+
+class InvoicePaymentSummarySerializer(serializers.ModelSerializer):
+    """
+    Full payment breakdown for a single invoice.
+    Shows what was paid in cash, what in credit, what remains.
+    """
+    customer_name       = serializers.CharField(source="customer.name", read_only=True)
+    customer_code       = serializers.CharField(source="customer.code", read_only=True)
+    payment_status_display = serializers.CharField(source="get_payment_status_display", read_only=True)
+    payments            = PaymentReadSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Invoice
+        fields = [
+            "id", "bill_number", "customer_name", "customer_code",
+            "status", "subtotal",
+            "cash_received", "credit_received", "total_paid", "remaining_amount",
+            "payment_status", "payment_status_display",
+            "payments",
+            "confirmed_at", "created_at",
+        ]
+        read_only_fields = fields
+
+
+class CustomerOutstandingSerializer(serializers.Serializer):
+    """Summary of what a customer owes across all their invoices."""
+    customer_id     = serializers.IntegerField()
+    total_billed    = serializers.DecimalField(max_digits=18, decimal_places=4)
+    total_cash      = serializers.DecimalField(max_digits=18, decimal_places=4)
+    total_credit    = serializers.DecimalField(max_digits=18, decimal_places=4)
+    total_paid      = serializers.DecimalField(max_digits=18, decimal_places=4)
+    total_remaining = serializers.DecimalField(max_digits=18, decimal_places=4)
+
+
+class CustomerWithOutstandingSerializer(serializers.ModelSerializer):
+    """Used in the customer outstanding list — includes annotated outstanding field."""
+    outstanding = serializers.DecimalField(max_digits=18, decimal_places=4, read_only=True)
+
+    class Meta:
+        model = Customer
+        fields = ["id", "name", "code", "mobile", "address", "outstanding"]
         read_only_fields = fields
