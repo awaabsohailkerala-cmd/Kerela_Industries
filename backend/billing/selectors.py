@@ -115,19 +115,12 @@ def get_return_by_id(pk: int) -> Return:
 
 def get_available_purchase_batches(product_id: int) -> QuerySet:
     """
-    Returns purchase batches for a product that still have remaining stock,
-    ordered oldest first (FIFO order). Excludes soft-deleted purchases.
+    Returns confirmed PurchaseItems for a product that still have remaining stock,
+    ordered oldest-confirmed first (FIFO order). Excludes soft-deleted items.
+    Uses PurchaseItem (renamed from Purchase) from the purchases app.
     """
-    from purchases.models import Purchase
-    return (
-        Purchase.objects
-        .filter(
-            product_id=product_id,
-            is_deleted=False,
-            remaining_quantity__gt=0,
-        )
-        .order_by("created_at")   # oldest first = FIFO
-    )
+    from purchases.selectors import get_available_purchase_items_for_fifo
+    return get_available_purchase_items_for_fifo(product_id)
 
 
 # ---------------------------------------------------------------------------

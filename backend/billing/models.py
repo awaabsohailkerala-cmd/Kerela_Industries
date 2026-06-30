@@ -193,7 +193,7 @@ class FIFOLedger(models.Model):
         InvoiceItem, on_delete=models.PROTECT, related_name="fifo_layers",
     )
     purchase     = models.ForeignKey(
-        "purchases.Purchase", on_delete=models.PROTECT, related_name="fifo_consumed",
+        "purchases.PurchaseItem", on_delete=models.PROTECT, related_name="fifo_consumed",
     )
     quantity     = models.IntegerField(
         help_text="Positive = consumed. Negative = returned."
