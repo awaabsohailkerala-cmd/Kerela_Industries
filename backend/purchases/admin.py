@@ -1,14 +1,17 @@
 from django.contrib import admin
 
-from .models import Category, Inventory, Product, Purchase, Shelf, Supplier
+from .models import (
+    Category, Inventory, Product, PurchaseItem, PurchaseOrder,
+    PurchaseReturn, PurchaseReturnItem, SavedPurchaseOrderPDF,
+    Shelf, Supplier, SupplierPayment,
+)
 
 
 class AuditAdminMixin:
-    """
-    Mixin that auto-populates created_by and updated_by on every save,
-    and marks deleted_by + deleted_at on soft delete.
-    Reused across all admin classes — single place for audit logic.
-    """
+    readonly_fields = (
+        "created_by", "updated_by", "deleted_by",
+        "created_at", "updated_at", "deleted_at",
+    )
 
     def save_model(self, request, obj, form, change):
         if not change:
@@ -16,89 +19,122 @@ class AuditAdminMixin:
         obj.updated_by = request.user
         super().save_model(request, obj, form, change)
 
-    readonly_fields = ("created_by", "updated_by", "deleted_by", "created_at", "updated_at", "deleted_at")
-
 
 class SoftDeleteAdminMixin:
-    """
-    Overrides the default queryset to show ALL records (including soft-deleted)
-    in admin so admins can inspect history.
-    """
-
     def get_queryset(self, request):
         return self.model.all_objects.all()
 
 
-# ---------------------------------------------------------------------------
-# Lookup tables
-# ---------------------------------------------------------------------------
-
 @admin.register(Category)
 class CategoryAdmin(AuditAdminMixin, SoftDeleteAdminMixin, admin.ModelAdmin):
-    list_display = ["name", "is_deleted", "created_by", "created_at"]
-    list_filter = ["is_deleted"]
+    list_display  = ["name", "is_deleted", "created_by", "created_at"]
+    list_filter   = ["is_deleted"]
     search_fields = ["name"]
     readonly_fields = AuditAdminMixin.readonly_fields
 
 
 @admin.register(Shelf)
 class ShelfAdmin(AuditAdminMixin, SoftDeleteAdminMixin, admin.ModelAdmin):
-    list_display = ["name", "is_deleted", "created_by", "created_at"]
-    list_filter = ["is_deleted"]
+    list_display  = ["name", "is_deleted", "created_by", "created_at"]
+    list_filter   = ["is_deleted"]
     search_fields = ["name"]
     readonly_fields = AuditAdminMixin.readonly_fields
 
 
-# ---------------------------------------------------------------------------
-# Core entities
-# ---------------------------------------------------------------------------
-
 @admin.register(Supplier)
 class SupplierAdmin(AuditAdminMixin, SoftDeleteAdminMixin, admin.ModelAdmin):
-    list_display = ["name", "code", "is_deleted", "created_by", "created_at"]
-    list_filter = ["is_deleted"]
+    list_display  = ["name", "code", "is_deleted", "created_by", "created_at"]
+    list_filter   = ["is_deleted"]
     search_fields = ["name", "code"]
     readonly_fields = AuditAdminMixin.readonly_fields
 
 
 @admin.register(Product)
 class ProductAdmin(AuditAdminMixin, SoftDeleteAdminMixin, admin.ModelAdmin):
-    list_display = ["name", "code", "category", "shelf", "is_deleted", "created_by", "created_at"]
-    list_filter = ["is_deleted", "category", "shelf"]
+    list_display  = ["name", "code", "category", "shelf", "is_deleted", "created_by", "created_at"]
+    list_filter   = ["is_deleted", "category", "shelf"]
     search_fields = ["name", "code"]
     readonly_fields = AuditAdminMixin.readonly_fields
 
 
-# ---------------------------------------------------------------------------
-# Purchase
-# ---------------------------------------------------------------------------
-
-@admin.register(Purchase)
-class PurchaseAdmin(AuditAdminMixin, SoftDeleteAdminMixin, admin.ModelAdmin):
-    list_display = [
-        "id", "product", "supplier", "quantity",
-        "unit_price", "gst", "wht", "total_price",
-        "is_deleted", "created_by", "created_at",
+class PurchaseItemInline(admin.TabularInline):
+    model         = PurchaseItem
+    extra         = 0
+    readonly_fields = [
+        "gross_amount", "gst_amount", "wht_amount",
+        "total_price", "remaining_quantity", "returned_quantity",
     ]
-    list_filter = ["is_deleted", "product__category", "supplier"]
-    search_fields = ["product__name", "supplier__name", "supplier__code"]
+    can_delete = False
+
+
+@admin.register(PurchaseOrder)
+class PurchaseOrderAdmin(AuditAdminMixin, SoftDeleteAdminMixin, admin.ModelAdmin):
+    list_display  = [
+        "order_number", "supplier", "status",
+        "net_payable", "payable_outstanding", "payment_status",
+        "is_deleted", "created_at",
+    ]
+    list_filter   = ["status", "payment_status", "is_deleted"]
+    search_fields = ["order_number", "supplier__name", "supplier__code"]
     readonly_fields = AuditAdminMixin.readonly_fields + (
-        "gross_amount", "gst_amount", "wht_amount", "total_price",
+        "order_number", "status", "confirmed_by", "confirmed_at",
+        "gross_amount", "gst_total", "wht_total", "net_payable",
+        "payable_outstanding", "total_paid", "payment_status",
     )
+    inlines = [PurchaseItemInline]
 
 
-# ---------------------------------------------------------------------------
-# Inventory
-# ---------------------------------------------------------------------------
+@admin.register(SupplierPayment)
+class SupplierPaymentAdmin(AuditAdminMixin, SoftDeleteAdminMixin, admin.ModelAdmin):
+    list_display  = ["order", "amount", "method", "payment_type", "payment_date", "is_deleted"]
+    list_filter   = ["method", "payment_type", "is_deleted"]
+    search_fields = ["order__order_number", "order__supplier__name"]
+    readonly_fields = AuditAdminMixin.readonly_fields
+
+
+class PurchaseReturnItemInline(admin.TabularInline):
+    model         = PurchaseReturnItem
+    extra         = 0
+    readonly_fields = [
+        "unit_price", "gross_amount", "gst_amount", "wht_amount", "total_amount",
+    ]
+    can_delete = False
+
+
+@admin.register(PurchaseReturn)
+class PurchaseReturnAdmin(AuditAdminMixin, SoftDeleteAdminMixin, admin.ModelAdmin):
+    list_display  = [
+        "order", "status", "total_return_amount",
+        "accepted_by", "accepted_at", "created_at",
+    ]
+    list_filter   = ["status"]
+    search_fields = ["order__order_number", "order__supplier__name"]
+    readonly_fields = AuditAdminMixin.readonly_fields + (
+        "status", "accepted_by", "accepted_at",
+        "total_return_gross", "total_return_gst",
+        "total_return_wht", "total_return_amount",
+    )
+    inlines = [PurchaseReturnItemInline]
+
+
+@admin.register(SavedPurchaseOrderPDF)
+class SavedPurchaseOrderPDFAdmin(admin.ModelAdmin):
+    list_display  = ["order", "file_name", "saved_by", "is_deleted", "created_at"]
+    list_filter   = ["is_deleted"]
+    search_fields = ["order__order_number", "file_name"]
+    readonly_fields = ["order", "file_name", "file_path", "saved_by", "deleted_by", "created_at", "deleted_at"]
+
+    def has_add_permission(self, request):
+        return False
+
 
 @admin.register(Inventory)
 class InventoryAdmin(admin.ModelAdmin):
-    list_display = ["product", "quantity", "last_updated_by", "last_updated_at"]
+    list_display  = ["product", "quantity", "last_updated_by", "last_updated_at"]
     search_fields = ["product__name", "product__code"]
     readonly_fields = ["quantity", "last_updated_at", "last_updated_by"]
 
     def has_add_permission(self, request):
-        # Inventory rows are auto-created by services only
         return False
 
     def has_delete_permission(self, request, obj=None):

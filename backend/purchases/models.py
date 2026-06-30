@@ -1,46 +1,39 @@
+from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
 from .utils import calculate_total_price
 
 
-class SoftDeleteManager(models.Manager):
-    """Returns only non-deleted records by default."""
+# ---------------------------------------------------------------------------
+# Shared managers
+# ---------------------------------------------------------------------------
 
+class SoftDeleteManager(models.Manager):
     def get_queryset(self):
         return super().get_queryset().filter(is_deleted=False)
 
 
 class AllObjectsManager(models.Manager):
-    """Returns all records including soft-deleted ones (for admin/audit use)."""
-
     def get_queryset(self):
         return super().get_queryset()
 
 
-class AuditMixin(models.Model):
-    """
-    Abstract mixin — adds full audit trail + soft delete to any model.
-    Every create/update/delete records who did it and when.
-    """
+# ---------------------------------------------------------------------------
+# Audit mixin — full trail + soft delete on every model
+# ---------------------------------------------------------------------------
 
+class AuditMixin(models.Model):
     created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        on_delete=models.SET_NULL,
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
         related_name="%(class)s_created",
     )
     updated_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        on_delete=models.SET_NULL,
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
         related_name="%(class)s_updated",
     )
     deleted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
         related_name="%(class)s_deleted",
     )
     created_at = models.DateTimeField(auto_now_add=True)
@@ -48,7 +41,7 @@ class AuditMixin(models.Model):
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_deleted = models.BooleanField(default=False, db_index=True)
 
-    objects = SoftDeleteManager()
+    objects     = SoftDeleteManager()
     all_objects = AllObjectsManager()
 
     class Meta:
@@ -60,33 +53,33 @@ class AuditMixin(models.Model):
 # ---------------------------------------------------------------------------
 
 class Category(AuditMixin):
-    name = models.CharField(max_length=255, unique=True)
+    name        = models.CharField(max_length=255, unique=True)
     description = models.TextField(blank=True, default="")
 
     class Meta:
-        verbose_name = "Category"
+        verbose_name        = "Category"
         verbose_name_plural = "Categories"
-        ordering = ["name"]
+        ordering            = ["name"]
 
     def __str__(self):
         return self.name
 
 
 class Shelf(AuditMixin):
-    name = models.CharField(max_length=255, unique=True)
+    name        = models.CharField(max_length=255, unique=True)
     description = models.TextField(blank=True, default="")
 
     class Meta:
-        verbose_name = "Shelf"
+        verbose_name        = "Shelf"
         verbose_name_plural = "Shelves"
-        ordering = ["name"]
+        ordering            = ["name"]
 
     def __str__(self):
         return self.name
 
 
 # ---------------------------------------------------------------------------
-# Core entities
+# Supplier
 # ---------------------------------------------------------------------------
 
 class Supplier(AuditMixin):
@@ -94,78 +87,125 @@ class Supplier(AuditMixin):
     code = models.CharField(max_length=100, unique=True)
 
     class Meta:
-        verbose_name = "Supplier"
+        verbose_name        = "Supplier"
         verbose_name_plural = "Suppliers"
-        ordering = ["name"]
+        ordering            = ["name"]
 
     def __str__(self):
         return f"{self.name} ({self.code})"
 
+
+# ---------------------------------------------------------------------------
+# Product
+# ---------------------------------------------------------------------------
 
 class Product(AuditMixin):
-    name = models.CharField(max_length=255)
-    code = models.CharField(max_length=100, unique=True)
-    category = models.ForeignKey(
-        Category,
-        on_delete=models.PROTECT,
-        related_name="products",
-    )
-    shelf = models.ForeignKey(
-        Shelf,
-        on_delete=models.PROTECT,
-        related_name="products",
-    )
+    name     = models.CharField(max_length=255)
+    code     = models.CharField(max_length=100, unique=True)
+    category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name="products")
+    shelf    = models.ForeignKey(Shelf,    on_delete=models.PROTECT, related_name="products")
 
     class Meta:
-        verbose_name = "Product"
+        verbose_name        = "Product"
         verbose_name_plural = "Products"
-        ordering = ["name"]
+        ordering            = ["name"]
 
     def __str__(self):
         return f"{self.name} ({self.code})"
 
 
 # ---------------------------------------------------------------------------
-# Purchase
+# Purchase Order (header) — renamed from Purchase
 # ---------------------------------------------------------------------------
 
-class Purchase(AuditMixin):
-    product = models.ForeignKey(
-        Product,
-        on_delete=models.PROTECT,
-        related_name="purchases",
+class PurchaseOrder(AuditMixin):
+    """
+    Header of a purchase. Mirrors billing.Invoice.
+    Draft → no inventory/debt effect.
+    Confirmed → inventory increases, supplier debt auto-created.
+    """
+
+    class Status(models.TextChoices):
+        DRAFT     = "draft",     "Draft"
+        CONFIRMED = "confirmed", "Confirmed"
+
+    class PaymentStatus(models.TextChoices):
+        UNPAID  = "unpaid",  "Unpaid"
+        PARTIAL = "partial", "Partial"
+        PAID    = "paid",    "Paid"
+
+    order_number = models.CharField(max_length=30, unique=True, editable=False)
+    supplier     = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="purchase_orders")
+    status       = models.CharField(max_length=12, choices=Status.choices, default=Status.DRAFT, db_index=True)
+    description  = models.TextField(blank=True, default="", help_text="Optional notes about this purchase order.")
+
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="confirmed_purchase_orders",
     )
-    supplier = models.ForeignKey(
-        Supplier,
-        on_delete=models.PROTECT,
-        related_name="purchases",
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+
+    # Totals — computed and stored on confirmation
+    gross_amount = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    gst_total    = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    wht_total    = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    net_payable  = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+
+    # Supplier payable tracking — updated on every payment / return
+    payable_outstanding = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    total_paid          = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    payment_status      = models.CharField(
+        max_length=10, choices=PaymentStatus.choices,
+        default=PaymentStatus.UNPAID, db_index=True,
     )
-    quantity = models.PositiveIntegerField()
-    remaining_quantity = models.PositiveIntegerField(
-        default=0,
-        help_text="Units still available in inventory for FIFO consumption.",
-    )
-    unit_price = models.DecimalField(max_digits=14, decimal_places=4)
-    gst = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        help_text="GST percentage e.g. 18.5 means 18.5%",
-    )
-    wht = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        help_text="WHT percentage e.g. 1.5 means 1.5%",
-    )
-    # Auto-calculated breakdown — stored for reporting, never entered by user
-    gross_amount = models.DecimalField(max_digits=18, decimal_places=4, editable=False)
-    gst_amount = models.DecimalField(max_digits=18, decimal_places=4, editable=False)
-    wht_amount = models.DecimalField(max_digits=18, decimal_places=4, editable=False)
-    total_price = models.DecimalField(max_digits=18, decimal_places=4, editable=False)
 
     class Meta:
-        verbose_name = "Purchase"
-        verbose_name_plural = "Purchases"
-        ordering = ["-created_at"]
+        verbose_name        = "Purchase Order"
+        verbose_name_plural = "Purchase Orders"
+        ordering            = ["-created_at"]
+
+    def __str__(self):
+        return self.order_number
+
+
+# ---------------------------------------------------------------------------
+# Purchase Item (line item) — renamed from Purchase
+# ---------------------------------------------------------------------------
+
+class PurchaseItem(AuditMixin):
+    """
+    One line item inside a PurchaseOrder.
+    remaining_quantity tracks FIFO consumption from billing.
+    All financial fields auto-calculated on save.
+    """
+
+    order      = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name="items")
+    product    = models.ForeignKey(Product,       on_delete=models.PROTECT, related_name="purchase_items")
+    quantity   = models.PositiveIntegerField()
+    unit_price = models.DecimalField(max_digits=14, decimal_places=4)
+    gst        = models.DecimalField(max_digits=5, decimal_places=2, default=0,
+                     help_text="GST percentage e.g. 18.5 means 18.5%")
+    wht        = models.DecimalField(max_digits=5, decimal_places=2, default=0,
+                     help_text="WHT percentage e.g. 1.5 means 1.5%")
+    description = models.TextField(blank=True, default="", help_text="Optional description for this line item.")
+
+    # Auto-calculated — never entered by user
+    gross_amount = models.DecimalField(max_digits=18, decimal_places=4, default=0, editable=False)
+    gst_amount   = models.DecimalField(max_digits=18, decimal_places=4, default=0, editable=False)
+    wht_amount   = models.DecimalField(max_digits=18, decimal_places=4, default=0, editable=False)
+    total_price  = models.DecimalField(max_digits=18, decimal_places=4, default=0, editable=False)
+
+    # FIFO tracking — set on confirmation, consumed by billing
+    remaining_quantity = models.PositiveIntegerField(default=0)
+
+    # Tracks how much of this line has been returned to supplier
+    returned_quantity = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name        = "Purchase Item"
+        verbose_name_plural = "Purchase Items"
+        unique_together     = [("order", "product")]
+        ordering            = ["id"]
 
     def save(self, *args, **kwargs):
         result = calculate_total_price(
@@ -175,49 +215,186 @@ class Purchase(AuditMixin):
             wht=self.wht,
         )
         self.gross_amount = result["gross_amount"]
-        self.gst_amount = result["gst_amount"]
-        self.wht_amount = result["wht_amount"]
-        self.total_price = result["total_price"]
-
-        # On first save only, remaining = quantity
-        if not self.pk:
-            self.remaining_quantity = self.quantity
-
+        self.gst_amount   = result["gst_amount"]
+        self.wht_amount   = result["wht_amount"]
+        self.total_price  = result["total_price"]
+        # Set remaining_quantity on first creation only (confirmation sets it via service)
         super().save(*args, **kwargs)
 
+    @property
+    def returnable_quantity(self):
+        return self.quantity - self.returned_quantity
+
     def __str__(self):
-        return f"Purchase #{self.pk} — {self.product.name}"
+        return f"{self.order.order_number} — {self.product.name}"
 
 
 # ---------------------------------------------------------------------------
-# Inventory (auto-managed aggregate — never written to directly by views)
+# Purchase Return
+# ---------------------------------------------------------------------------
+
+class PurchaseReturn(AuditMixin):
+    """
+    Return of goods to supplier. Always a new record — previous PurchaseOrder untouched.
+    Accepted only by admin/superuser.
+    On acceptance:
+        - Inventory decreases (FIFO reversal on remaining_quantity)
+        - Supplier payable_outstanding decreases
+    """
+
+    class Status(models.TextChoices):
+        PENDING  = "pending",  "Pending"
+        ACCEPTED = "accepted", "Accepted"
+
+    order       = models.ForeignKey(PurchaseOrder, on_delete=models.PROTECT, related_name="returns")
+    status      = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
+    note        = models.TextField(blank=True, default="")
+    accepted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="accepted_purchase_returns",
+    )
+    accepted_at = models.DateTimeField(null=True, blank=True)
+
+    # Totals — computed on acceptance
+    total_return_gross  = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    total_return_gst    = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    total_return_wht    = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    total_return_amount = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+
+    class Meta:
+        verbose_name        = "Purchase Return"
+        verbose_name_plural = "Purchase Returns"
+        ordering            = ["-created_at"]
+
+    def __str__(self):
+        return f"Return for {self.order.order_number}"
+
+
+class PurchaseReturnItem(models.Model):
+    """
+    One line item per product being returned in a PurchaseReturn.
+    GST and WHT are optional (default 0) on return items.
+    """
+
+    return_record  = models.ForeignKey(PurchaseReturn, on_delete=models.CASCADE, related_name="items")
+    purchase_item  = models.ForeignKey(PurchaseItem,   on_delete=models.PROTECT, related_name="return_items")
+    quantity       = models.PositiveIntegerField()
+    gst            = models.DecimalField(max_digits=5, decimal_places=2, default=0,
+                         help_text="GST on return (optional, default 0)")
+    wht            = models.DecimalField(max_digits=5, decimal_places=2, default=0,
+                         help_text="WHT on return (optional, default 0)")
+
+    # Snapshotted on acceptance from original purchase item
+    unit_price   = models.DecimalField(max_digits=14, decimal_places=4, default=0)
+    gross_amount = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    gst_amount   = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    wht_amount   = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+    total_amount = models.DecimalField(max_digits=18, decimal_places=4, default=0)
+
+    class Meta:
+        verbose_name        = "Purchase Return Item"
+        verbose_name_plural = "Purchase Return Items"
+        unique_together     = [("return_record", "purchase_item")]
+
+    def __str__(self):
+        return f"{self.return_record} — {self.purchase_item.product.name} x {self.quantity}"
+
+
+# ---------------------------------------------------------------------------
+# Supplier Payment
+# ---------------------------------------------------------------------------
+
+class SupplierPayment(AuditMixin):
+    """
+    Payment made to a supplier against a PurchaseOrder.
+    One order can have multiple partial payments over time.
+    payment_type is stored for future use (no logic difference currently).
+    """
+
+    class Method(models.TextChoices):
+        CASH      = "cash",      "Cash"
+        JAZZCASH  = "jazzcash",  "JazzCash"
+        EASYPAISA = "easypaisa", "Easypaisa"
+        BANK      = "bank",      "Bank Transfer"
+
+    class PaymentType(models.TextChoices):
+        ADVANCE          = "advance",          "Advance Payment"
+        AFTER_DELIVERY   = "after_delivery",   "Payment After Delivery"
+
+    order        = models.ForeignKey(PurchaseOrder, on_delete=models.PROTECT, related_name="payments")
+    amount       = models.DecimalField(max_digits=18, decimal_places=4)
+    method       = models.CharField(max_length=12, choices=Method.choices)
+    payment_type = models.CharField(
+        max_length=20, choices=PaymentType.choices,
+        default=PaymentType.AFTER_DELIVERY,
+        help_text="Advance or after delivery. Stored for future automation.",
+    )
+    payment_date = models.DateField()
+    note         = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        verbose_name        = "Supplier Payment"
+        verbose_name_plural = "Supplier Payments"
+        ordering            = ["-payment_date"]
+
+    def __str__(self):
+        return f"{self.order.order_number} — {self.method} {self.amount}"
+
+
+# ---------------------------------------------------------------------------
+# Saved Purchase Order PDF
+# ---------------------------------------------------------------------------
+
+class SavedPurchaseOrderPDF(models.Model):
+    """
+    Tracks every PDF saved for a confirmed PurchaseOrder.
+    Mirrors billing.SavedInvoicePDF — same pattern.
+    """
+
+    order      = models.ForeignKey(PurchaseOrder, on_delete=models.PROTECT, related_name="saved_pdfs")
+    file_name  = models.CharField(max_length=255)
+    file_path  = models.CharField(max_length=500)
+    saved_by   = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
+        related_name="saved_purchase_pdfs",
+    )
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="deleted_purchase_pdfs",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    is_deleted = models.BooleanField(default=False, db_index=True)
+
+    objects     = SoftDeleteManager()
+    all_objects = AllObjectsManager()
+
+    class Meta:
+        verbose_name        = "Saved Purchase Order PDF"
+        verbose_name_plural = "Saved Purchase Order PDFs"
+        ordering            = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.order.order_number} — {self.file_name}"
+
+
+# ---------------------------------------------------------------------------
+# Inventory (auto-managed — unchanged)
 # ---------------------------------------------------------------------------
 
 class Inventory(models.Model):
-    """
-    One row per product. Quantity is the running total driven entirely
-    by purchase services. No soft delete — inventory is a live aggregate.
-    The audit trail lives in the purchases that drove each change.
-    """
-
-    product = models.OneToOneField(
-        Product,
-        on_delete=models.PROTECT,
-        related_name="inventory",
-    )
-    quantity = models.PositiveIntegerField(default=0)
+    product         = models.OneToOneField(Product, on_delete=models.PROTECT, related_name="inventory")
+    quantity        = models.PositiveIntegerField(default=0)
     last_updated_at = models.DateTimeField(auto_now=True)
     last_updated_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        on_delete=models.SET_NULL,
+        settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL,
         related_name="inventory_updates",
     )
 
     class Meta:
-        verbose_name = "Inventory"
+        verbose_name        = "Inventory"
         verbose_name_plural = "Inventories"
-        ordering = ["product__name"]
+        ordering            = ["product__name"]
 
     def __str__(self):
         return f"{self.product.name} — qty: {self.quantity}"

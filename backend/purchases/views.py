@@ -1,65 +1,56 @@
+from django.http import HttpResponse
 from rest_framework import generics, status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from .models import Category, Inventory, Product, Purchase, Shelf, Supplier
+from .models import PurchaseOrder
+from .pdf_service import (
+    delete_purchase_order_pdf, generate_purchase_order_pdf_bytes,
+    get_saved_pdfs_for_order, save_purchase_order_pdf,
+)
 from .permissions import IsAdminOrSuperuser, IsAdminOrSuperuserOrReadOnly
 from .selectors import (
-    get_all_categories,
-    get_all_inventory,
-    get_all_products,
-    get_all_purchases,
-    get_all_shelves,
-    get_all_suppliers,
-    get_category_by_id,
-    get_inventory_by_product_id,
-    get_product_by_id,
-    get_purchase_by_id,
-    get_shelf_by_id,
-    get_supplier_by_id,
+    get_all_categories, get_all_inventory, get_all_products,
+    get_all_purchase_orders, get_all_returns, get_all_shelves,
+    get_all_suppliers, get_category_by_id, get_confirmed_purchase_orders,
+    get_draft_purchase_orders, get_inventory_by_product_id,
+    get_order_payment_summary, get_payments_for_order,
+    get_purchase_order_by_id, get_purchase_return_by_id,
+    get_returns_for_order, get_shelf_by_id, get_supplier_by_id,
+    get_supplier_payable_summary, get_supplier_payment_by_id,
+    get_suppliers_with_outstanding,
 )
 from .serializers import (
-    CategoryReadSerializer,
-    CategoryWriteSerializer,
-    InventoryReadSerializer,
-    ProductReadSerializer,
-    ProductWriteSerializer,
-    PurchaseReadSerializer,
-    PurchaseWriteSerializer,
-    ShelfReadSerializer,
-    ShelfWriteSerializer,
-    SupplierReadSerializer,
+    CategoryReadSerializer, CategoryWriteSerializer,
+    InventoryReadSerializer, ProductReadSerializer, ProductWriteSerializer,
+    PurchaseItemReadSerializer, PurchaseOrderCreateSerializer,
+    PurchaseOrderPaymentSummarySerializer, PurchaseOrderReadSerializer,
+    PurchaseOrderUpdateSerializer, PurchaseReturnCreateSerializer,
+    PurchaseReturnReadSerializer, SavedPurchaseOrderPDFSerializer,
+    SavePurchaseOrderPDFRequestSerializer, ShelfReadSerializer,
+    ShelfWriteSerializer, SupplierPayableSummarySerializer,
+    SupplierPaymentReadSerializer, SupplierPaymentWriteSerializer,
+    SupplierReadSerializer, SupplierWithOutstandingSerializer,
     SupplierWriteSerializer,
 )
 from .services import (
-    create_category,
-    create_product,
-    create_purchase,
-    create_shelf,
-    create_supplier,
-    delete_category,
-    delete_product,
-    delete_purchase,
-    delete_shelf,
-    delete_supplier,
-    update_category,
-    update_product,
-    update_purchase,
-    update_shelf,
-    update_supplier,
+    accept_purchase_return, confirm_purchase_order, create_category,
+    create_product, create_purchase_order, create_purchase_return,
+    create_shelf, create_supplier, create_supplier_payment,
+    delete_category, delete_product, delete_purchase_order,
+    delete_shelf, delete_supplier, delete_supplier_payment,
+    update_category, update_product, update_purchase_order_items,
+    update_shelf, update_supplier,
 )
 
 
 # ---------------------------------------------------------------------------
-# Base mixin: eliminates duplicated get_serializer_class pattern
+# Shared mixin
 # ---------------------------------------------------------------------------
 
 class ReadWriteSerializerMixin:
-    """
-    Mixin that serves separate read/write serializers from one view.
-    Subclasses declare read_serializer_class and write_serializer_class.
-    """
-
-    read_serializer_class = None
+    read_serializer_class  = None
     write_serializer_class = None
 
     def get_serializer_class(self):
@@ -69,12 +60,12 @@ class ReadWriteSerializerMixin:
 
 
 # ---------------------------------------------------------------------------
-# Category views
+# Category
 # ---------------------------------------------------------------------------
 
 class CategoryListCreateView(ReadWriteSerializerMixin, generics.ListCreateAPIView):
-    permission_classes = [IsAdminOrSuperuser]
-    read_serializer_class = CategoryReadSerializer
+    permission_classes     = [IsAdminOrSuperuser]
+    read_serializer_class  = CategoryReadSerializer
     write_serializer_class = CategoryWriteSerializer
 
     def get_queryset(self):
@@ -83,19 +74,15 @@ class CategoryListCreateView(ReadWriteSerializerMixin, generics.ListCreateAPIVie
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        category = create_category(
-            name=serializer.validated_data["name"],
-            description=serializer.validated_data.get("description", ""),
-            user=request.user,
-        )
-        return Response(CategoryReadSerializer(category).data, status=status.HTTP_201_CREATED)
+        obj = create_category(**serializer.validated_data, user=request.user)
+        return Response(CategoryReadSerializer(obj).data, status=status.HTTP_201_CREATED)
 
 
 class CategoryRetrieveUpdateDestroyView(ReadWriteSerializerMixin, generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [IsAdminOrSuperuser]
-    read_serializer_class = CategoryReadSerializer
+    permission_classes     = [IsAdminOrSuperuser]
+    read_serializer_class  = CategoryReadSerializer
     write_serializer_class = CategoryWriteSerializer
-    http_method_names = ["get", "patch", "delete"]
+    http_method_names      = ["get", "patch", "delete"]
 
     def get_object(self):
         return get_category_by_id(self.kwargs["pk"])
@@ -103,13 +90,8 @@ class CategoryRetrieveUpdateDestroyView(ReadWriteSerializerMixin, generics.Retri
     def update(self, request, *args, **kwargs):
         serializer = self.get_serializer(self.get_object(), data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        category = update_category(
-            pk=self.kwargs["pk"],
-            name=serializer.validated_data.get("name"),
-            description=serializer.validated_data.get("description"),
-            user=request.user,
-        )
-        return Response(CategoryReadSerializer(category).data)
+        obj = update_category(pk=self.kwargs["pk"], user=request.user, **serializer.validated_data)
+        return Response(CategoryReadSerializer(obj).data)
 
     def destroy(self, request, *args, **kwargs):
         delete_category(pk=self.kwargs["pk"], user=request.user)
@@ -117,12 +99,12 @@ class CategoryRetrieveUpdateDestroyView(ReadWriteSerializerMixin, generics.Retri
 
 
 # ---------------------------------------------------------------------------
-# Shelf views
+# Shelf
 # ---------------------------------------------------------------------------
 
 class ShelfListCreateView(ReadWriteSerializerMixin, generics.ListCreateAPIView):
-    permission_classes = [IsAdminOrSuperuser]
-    read_serializer_class = ShelfReadSerializer
+    permission_classes     = [IsAdminOrSuperuser]
+    read_serializer_class  = ShelfReadSerializer
     write_serializer_class = ShelfWriteSerializer
 
     def get_queryset(self):
@@ -131,19 +113,15 @@ class ShelfListCreateView(ReadWriteSerializerMixin, generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        shelf = create_shelf(
-            name=serializer.validated_data["name"],
-            description=serializer.validated_data.get("description", ""),
-            user=request.user,
-        )
-        return Response(ShelfReadSerializer(shelf).data, status=status.HTTP_201_CREATED)
+        obj = create_shelf(**serializer.validated_data, user=request.user)
+        return Response(ShelfReadSerializer(obj).data, status=status.HTTP_201_CREATED)
 
 
 class ShelfRetrieveUpdateDestroyView(ReadWriteSerializerMixin, generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [IsAdminOrSuperuser]
-    read_serializer_class = ShelfReadSerializer
+    permission_classes     = [IsAdminOrSuperuser]
+    read_serializer_class  = ShelfReadSerializer
     write_serializer_class = ShelfWriteSerializer
-    http_method_names = ["get", "patch", "delete"]
+    http_method_names      = ["get", "patch", "delete"]
 
     def get_object(self):
         return get_shelf_by_id(self.kwargs["pk"])
@@ -151,13 +129,8 @@ class ShelfRetrieveUpdateDestroyView(ReadWriteSerializerMixin, generics.Retrieve
     def update(self, request, *args, **kwargs):
         serializer = self.get_serializer(self.get_object(), data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        shelf = update_shelf(
-            pk=self.kwargs["pk"],
-            name=serializer.validated_data.get("name"),
-            description=serializer.validated_data.get("description"),
-            user=request.user,
-        )
-        return Response(ShelfReadSerializer(shelf).data)
+        obj = update_shelf(pk=self.kwargs["pk"], user=request.user, **serializer.validated_data)
+        return Response(ShelfReadSerializer(obj).data)
 
     def destroy(self, request, *args, **kwargs):
         delete_shelf(pk=self.kwargs["pk"], user=request.user)
@@ -165,33 +138,29 @@ class ShelfRetrieveUpdateDestroyView(ReadWriteSerializerMixin, generics.Retrieve
 
 
 # ---------------------------------------------------------------------------
-# Supplier views
+# Supplier
 # ---------------------------------------------------------------------------
 
 class SupplierListCreateView(ReadWriteSerializerMixin, generics.ListCreateAPIView):
-    permission_classes = [IsAdminOrSuperuser]
-    read_serializer_class = SupplierReadSerializer
+    permission_classes     = [IsAdminOrSuperuser]
+    read_serializer_class  = SupplierReadSerializer
     write_serializer_class = SupplierWriteSerializer
 
     def get_queryset(self):
-        return get_all_suppliers()
+        return get_all_suppliers(search=self.request.query_params.get("search"))
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        supplier = create_supplier(
-            name=serializer.validated_data["name"],
-            code=serializer.validated_data["code"],
-            user=request.user,
-        )
-        return Response(SupplierReadSerializer(supplier).data, status=status.HTTP_201_CREATED)
+        obj = create_supplier(**serializer.validated_data, user=request.user)
+        return Response(SupplierReadSerializer(obj).data, status=status.HTTP_201_CREATED)
 
 
 class SupplierRetrieveUpdateDestroyView(ReadWriteSerializerMixin, generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [IsAdminOrSuperuser]
-    read_serializer_class = SupplierReadSerializer
+    permission_classes     = [IsAdminOrSuperuser]
+    read_serializer_class  = SupplierReadSerializer
     write_serializer_class = SupplierWriteSerializer
-    http_method_names = ["get", "patch", "delete"]
+    http_method_names      = ["get", "patch", "delete"]
 
     def get_object(self):
         return get_supplier_by_id(self.kwargs["pk"])
@@ -199,13 +168,8 @@ class SupplierRetrieveUpdateDestroyView(ReadWriteSerializerMixin, generics.Retri
     def update(self, request, *args, **kwargs):
         serializer = self.get_serializer(self.get_object(), data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        supplier = update_supplier(
-            pk=self.kwargs["pk"],
-            name=serializer.validated_data.get("name"),
-            code=serializer.validated_data.get("code"),
-            user=request.user,
-        )
-        return Response(SupplierReadSerializer(supplier).data)
+        obj = update_supplier(pk=self.kwargs["pk"], user=request.user, **serializer.validated_data)
+        return Response(SupplierReadSerializer(obj).data)
 
     def destroy(self, request, *args, **kwargs):
         delete_supplier(pk=self.kwargs["pk"], user=request.user)
@@ -213,12 +177,12 @@ class SupplierRetrieveUpdateDestroyView(ReadWriteSerializerMixin, generics.Retri
 
 
 # ---------------------------------------------------------------------------
-# Product views
+# Product
 # ---------------------------------------------------------------------------
 
 class ProductListCreateView(ReadWriteSerializerMixin, generics.ListCreateAPIView):
-    permission_classes = [IsAdminOrSuperuser]
-    read_serializer_class = ProductReadSerializer
+    permission_classes     = [IsAdminOrSuperuser]
+    read_serializer_class  = ProductReadSerializer
     write_serializer_class = ProductWriteSerializer
 
     def get_queryset(self):
@@ -227,39 +191,37 @@ class ProductListCreateView(ReadWriteSerializerMixin, generics.ListCreateAPIView
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        d = serializer.validated_data
-        product = create_product(
-            name=d["name"],
-            code=d["code"],
-            category_id=d["category"].pk,
-            shelf_id=d["shelf"].pk,
+        d   = serializer.validated_data
+        obj = create_product(
+            name=d["name"], code=d["code"],
+            category_id=d["category"].pk, shelf_id=d["shelf"].pk,
             user=request.user,
         )
-        return Response(ProductReadSerializer(product).data, status=status.HTTP_201_CREATED)
+        return Response(ProductReadSerializer(obj).data, status=status.HTTP_201_CREATED)
 
 
 class ProductRetrieveUpdateDestroyView(ReadWriteSerializerMixin, generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [IsAdminOrSuperuser]
-    read_serializer_class = ProductReadSerializer
+    permission_classes     = [IsAdminOrSuperuser]
+    read_serializer_class  = ProductReadSerializer
     write_serializer_class = ProductWriteSerializer
-    http_method_names = ["get", "patch", "delete"]
+    http_method_names      = ["get", "patch", "delete"]
 
     def get_object(self):
+        from .selectors import get_product_by_id
         return get_product_by_id(self.kwargs["pk"])
 
     def update(self, request, *args, **kwargs):
         serializer = self.get_serializer(self.get_object(), data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        d = serializer.validated_data
-        product = update_product(
+        d   = serializer.validated_data
+        obj = update_product(
             pk=self.kwargs["pk"],
-            name=d.get("name"),
-            code=d.get("code"),
+            name=d.get("name"), code=d.get("code"),
             category_id=d["category"].pk if "category" in d else None,
             shelf_id=d["shelf"].pk if "shelf" in d else None,
             user=request.user,
         )
-        return Response(ProductReadSerializer(product).data)
+        return Response(ProductReadSerializer(obj).data)
 
     def destroy(self, request, *args, **kwargs):
         delete_product(pk=self.kwargs["pk"], user=request.user)
@@ -267,70 +229,332 @@ class ProductRetrieveUpdateDestroyView(ReadWriteSerializerMixin, generics.Retrie
 
 
 # ---------------------------------------------------------------------------
-# Purchase views
+# PurchaseOrder — list/create/search/filter
 # ---------------------------------------------------------------------------
 
-class PurchaseListCreateView(ReadWriteSerializerMixin, generics.ListCreateAPIView):
+class PurchaseOrderListCreateView(generics.ListCreateAPIView):
+    """
+    GET  /purchases/orders/         — all orders with full filter support
+    POST /purchases/orders/         — create draft order
+
+    Filter params:
+        status, supplier_name, supplier_code, order_number,
+        date, date_from, date_to, payment_status, min_amount, max_amount
+    """
     permission_classes = [IsAdminOrSuperuser]
-    read_serializer_class = PurchaseReadSerializer
-    write_serializer_class = PurchaseWriteSerializer
+
+    def get_serializer_class(self):
+        return PurchaseOrderCreateSerializer if self.request.method == "POST" else PurchaseOrderReadSerializer
 
     def get_queryset(self):
-        return get_all_purchases()
+        p = self.request.query_params
+        return get_all_purchase_orders(
+            status         = p.get("status"),
+            supplier_name  = p.get("supplier_name"),
+            supplier_code  = p.get("supplier_code"),
+            order_number   = p.get("order_number"),
+            date           = p.get("date"),
+            date_from      = p.get("date_from"),
+            date_to        = p.get("date_to"),
+            payment_status = p.get("payment_status"),
+            min_amount     = p.get("min_amount"),
+            max_amount     = p.get("max_amount"),
+        )
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        d = serializer.validated_data
-        purchase = create_purchase(
-            product_id=d["product"].pk,
-            supplier_id=d["supplier"].pk,
-            quantity=d["quantity"],
-            unit_price=d["unit_price"],
-            gst=d["gst"],
-            wht=d["wht"],
+        d   = serializer.validated_data
+        obj = create_purchase_order(
+            supplier_id=d["supplier_id"],
+            items=d["items"],
+            description=d.get("description", ""),
             user=request.user,
         )
-        return Response(PurchaseReadSerializer(purchase).data, status=status.HTTP_201_CREATED)
+        return Response(PurchaseOrderReadSerializer(obj).data, status=status.HTTP_201_CREATED)
 
 
-class PurchaseRetrieveUpdateDestroyView(ReadWriteSerializerMixin, generics.RetrieveUpdateDestroyAPIView):
+class DraftPurchaseOrderListView(generics.ListAPIView):
+    """GET /purchases/orders/drafts/ — all draft orders"""
     permission_classes = [IsAdminOrSuperuser]
-    read_serializer_class = PurchaseReadSerializer
-    write_serializer_class = PurchaseWriteSerializer
-    http_method_names = ["get", "patch", "delete"]
+    serializer_class   = PurchaseOrderReadSerializer
+
+    def get_queryset(self):
+        return get_draft_purchase_orders()
+
+
+class ConfirmedPurchaseOrderListView(generics.ListAPIView):
+    """
+    GET /purchases/orders/confirmed/ — confirmed orders with filters
+    Filter params: supplier_name, supplier_code, date_from, date_to, payment_status, min_amount, max_amount
+    """
+    permission_classes = [IsAdminOrSuperuser]
+    serializer_class   = PurchaseOrderReadSerializer
+
+    def get_queryset(self):
+        p = self.request.query_params
+        return get_confirmed_purchase_orders(
+            supplier_name  = p.get("supplier_name"),
+            supplier_code  = p.get("supplier_code"),
+            date_from      = p.get("date_from"),
+            date_to        = p.get("date_to"),
+            payment_status = p.get("payment_status"),
+            min_amount     = p.get("min_amount"),
+            max_amount     = p.get("max_amount"),
+        )
+
+
+class PurchaseOrderRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET    /purchases/orders/<pk>/  — retrieve
+    PATCH  /purchases/orders/<pk>/  — update items (DRAFT only)
+    DELETE /purchases/orders/<pk>/  — soft delete (DRAFT only)
+    """
+    permission_classes = [IsAdminOrSuperuser]
+    http_method_names  = ["get", "patch", "delete"]
+
+    def get_serializer_class(self):
+        return PurchaseOrderUpdateSerializer if self.request.method == "PATCH" else PurchaseOrderReadSerializer
 
     def get_object(self):
-        return get_purchase_by_id(self.kwargs["pk"])
+        return get_purchase_order_by_id(self.kwargs["pk"])
 
     def update(self, request, *args, **kwargs):
-        serializer = self.get_serializer(self.get_object(), data=request.data, partial=True)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        d = serializer.validated_data
-        purchase = update_purchase(
-            pk=self.kwargs["pk"],
-            product_id=d["product"].pk if "product" in d else None,
-            supplier_id=d["supplier"].pk if "supplier" in d else None,
-            quantity=d.get("quantity"),
-            unit_price=d.get("unit_price"),
-            gst=d.get("gst"),
-            wht=d.get("wht"),
+        d   = serializer.validated_data
+        obj = update_purchase_order_items(
+            order_id=self.kwargs["pk"],
+            items=d["items"],
+            description=d.get("description"),
             user=request.user,
         )
-        return Response(PurchaseReadSerializer(purchase).data)
+        return Response(PurchaseOrderReadSerializer(obj).data)
 
     def destroy(self, request, *args, **kwargs):
-        delete_purchase(pk=self.kwargs["pk"], user=request.user)
-        return Response({"detail": "Purchase deleted and inventory updated."}, status=status.HTTP_200_OK)
+        delete_purchase_order(order_id=self.kwargs["pk"], user=request.user)
+        return Response({"detail": "Purchase order deleted."}, status=status.HTTP_200_OK)
+
+
+class PurchaseOrderConfirmView(APIView):
+    """POST /purchases/orders/<pk>/confirm/ — admin/superuser only"""
+    permission_classes = [IsAdminOrSuperuser]
+
+    def post(self, request, pk):
+        obj = confirm_purchase_order(order_id=pk, user=request.user)
+        return Response(PurchaseOrderReadSerializer(obj).data, status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
-# Inventory views (read-only for all authenticated users)
+# Supplier Payment
+# ---------------------------------------------------------------------------
+
+class SupplierPaymentListCreateView(generics.ListCreateAPIView):
+    """
+    GET  /purchases/orders/<order_id>/payments/
+    POST /purchases/orders/<order_id>/payments/
+    """
+    permission_classes = [IsAdminOrSuperuser]
+
+    def get_serializer_class(self):
+        return SupplierPaymentWriteSerializer if self.request.method == "POST" else SupplierPaymentReadSerializer
+
+    def get_queryset(self):
+        return get_payments_for_order(self.kwargs["order_id"])
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        d   = serializer.validated_data
+        obj = create_supplier_payment(
+            order_id     = self.kwargs["order_id"],
+            amount       = d["amount"],
+            method       = d["method"],
+            payment_type = d["payment_type"],
+            payment_date = d["payment_date"],
+            note         = d.get("note", ""),
+            user         = request.user,
+        )
+        return Response(SupplierPaymentReadSerializer(obj).data, status=status.HTTP_201_CREATED)
+
+
+class SupplierPaymentDestroyView(generics.DestroyAPIView):
+    """DELETE /purchases/payments/<pk>/"""
+    permission_classes = [IsAdminOrSuperuser]
+
+    def get_object(self):
+        return get_supplier_payment_by_id(self.kwargs["pk"])
+
+    def destroy(self, request, *args, **kwargs):
+        delete_supplier_payment(payment_id=self.kwargs["pk"], user=request.user)
+        return Response({"detail": "Payment deleted."}, status=status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------------
+# Supplier Payable Summary
+# ---------------------------------------------------------------------------
+
+class PurchaseOrderPaymentSummaryView(generics.RetrieveAPIView):
+    """GET /purchases/orders/<pk>/payment-summary/"""
+    permission_classes = [IsAdminOrSuperuser]
+    serializer_class   = PurchaseOrderPaymentSummarySerializer
+
+    def get_object(self):
+        return get_order_payment_summary(self.kwargs["pk"])
+
+
+class SupplierPayableSummaryView(generics.RetrieveAPIView):
+    """GET /purchases/suppliers/<pk>/payable-summary/"""
+    permission_classes = [IsAdminOrSuperuser]
+
+    def get(self, request, pk):
+        summary = get_supplier_payable_summary(supplier_id=pk)
+        return Response(SupplierPayableSummarySerializer(summary).data)
+
+
+class SupplierOutstandingListView(generics.ListAPIView):
+    """
+    GET /purchases/suppliers/outstanding/
+    Lists suppliers with remaining payables. Filter: ?min_outstanding=
+    """
+    permission_classes = [IsAdminOrSuperuser]
+    serializer_class   = SupplierWithOutstandingSerializer
+
+    def get_queryset(self):
+        min_val = self.request.query_params.get("min_outstanding")
+        return get_suppliers_with_outstanding(
+            min_outstanding=float(min_val) if min_val else None
+        )
+
+
+# ---------------------------------------------------------------------------
+# Purchase Return
+# ---------------------------------------------------------------------------
+
+class PurchaseReturnListCreateView(generics.ListCreateAPIView):
+    """
+    GET  /purchases/orders/<order_id>/returns/
+    POST /purchases/orders/<order_id>/returns/
+
+    Filter params for GET (all returns): status, supplier_name, supplier_code, order_number, date_from, date_to
+    """
+    permission_classes = [IsAdminOrSuperuser]
+
+    def get_serializer_class(self):
+        return PurchaseReturnCreateSerializer if self.request.method == "POST" else PurchaseReturnReadSerializer
+
+    def get_queryset(self):
+        return get_returns_for_order(self.kwargs["order_id"])
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        d   = serializer.validated_data
+        obj = create_purchase_return(
+            order_id=self.kwargs["order_id"],
+            items=d["items"],
+            note=d.get("note", ""),
+            user=request.user,
+        )
+        return Response(PurchaseReturnReadSerializer(obj).data, status=status.HTTP_201_CREATED)
+
+
+class AllPurchaseReturnsListView(generics.ListAPIView):
+    """
+    GET /purchases/returns/
+    Master returns list with full filters:
+        status, supplier_name, supplier_code, order_number, date_from, date_to
+    """
+    permission_classes = [IsAdminOrSuperuser]
+    serializer_class   = PurchaseReturnReadSerializer
+
+    def get_queryset(self):
+        p = self.request.query_params
+        return get_all_returns(
+            status        = p.get("status"),
+            supplier_name = p.get("supplier_name"),
+            supplier_code = p.get("supplier_code"),
+            order_number  = p.get("order_number"),
+            date_from     = p.get("date_from"),
+            date_to       = p.get("date_to"),
+        )
+
+
+class PurchaseReturnAcceptView(APIView):
+    """POST /purchases/returns/<pk>/accept/ — admin/superuser only"""
+    permission_classes = [IsAdminOrSuperuser]
+
+    def post(self, request, pk):
+        obj = accept_purchase_return(return_id=pk, user=request.user)
+        return Response(PurchaseReturnReadSerializer(obj).data, status=status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------------
+# PDF
+# ---------------------------------------------------------------------------
+
+class PurchaseOrderPrintView(APIView):
+    """
+    GET /purchases/orders/<pk>/print/
+    Streams PDF — nothing saved. Confirmed orders only.
+    Admin/superuser only.
+    """
+    permission_classes = [IsAdminOrSuperuser]
+
+    def get(self, request, pk):
+        pdf_bytes, filename = generate_purchase_order_pdf_bytes(order_id=pk)
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'inline; filename="{filename}"'
+        return response
+
+
+class PurchaseOrderSavePDFView(generics.CreateAPIView):
+    """POST /purchases/orders/<pk>/pdf/save/ — admin/superuser only"""
+    permission_classes = [IsAdminOrSuperuser]
+    serializer_class   = SavePurchaseOrderPDFRequestSerializer
+
+    def create(self, request, pk):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        order     = get_purchase_order_by_id(pk)
+        file_name = serializer.validated_data.get("file_name") or order.order_number
+        saved     = save_purchase_order_pdf(order_id=pk, file_name=file_name, user=request.user)
+        return Response(
+            SavedPurchaseOrderPDFSerializer(saved, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class PurchaseOrderSavedPDFListView(generics.ListAPIView):
+    """GET /purchases/orders/<pk>/pdf/ — list saved PDFs for an order"""
+    permission_classes = [IsAdminOrSuperuser]
+    serializer_class   = SavedPurchaseOrderPDFSerializer
+
+    def get_queryset(self):
+        return get_saved_pdfs_for_order(self.kwargs["pk"])
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx["request"] = self.request
+        return ctx
+
+
+class SavedPurchaseOrderPDFDeleteView(generics.DestroyAPIView):
+    """DELETE /purchases/pdf/<saved_pdf_id>/"""
+    permission_classes = [IsAdminOrSuperuser]
+
+    def destroy(self, request, saved_pdf_id):
+        delete_purchase_order_pdf(saved_pdf_id=saved_pdf_id, user=request.user)
+        return Response({"detail": "PDF deleted."}, status=status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------------
+# Inventory (read for all auth users)
 # ---------------------------------------------------------------------------
 
 class InventoryListView(generics.ListAPIView):
     permission_classes = [IsAdminOrSuperuserOrReadOnly]
-    serializer_class = InventoryReadSerializer
+    serializer_class   = InventoryReadSerializer
 
     def get_queryset(self):
         return get_all_inventory()
@@ -338,7 +562,7 @@ class InventoryListView(generics.ListAPIView):
 
 class InventoryRetrieveView(generics.RetrieveAPIView):
     permission_classes = [IsAdminOrSuperuserOrReadOnly]
-    serializer_class = InventoryReadSerializer
+    serializer_class   = InventoryReadSerializer
 
     def get_object(self):
         return get_inventory_by_product_id(self.kwargs["product_id"])
