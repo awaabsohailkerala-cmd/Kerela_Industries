@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .views import (
+    AllOutstandingInvoicesView,
     ConfirmedInvoiceListView,
     CustomerListCreateView,
     CustomerOutstandingListView,
@@ -48,6 +49,7 @@ urlpatterns = [
 
     # Confirmed invoices (dedicated endpoint)
     path("invoices/confirmed/", ConfirmedInvoiceListView.as_view(), name="invoice-confirmed-list"),
+    path("invoices/outstanding/", AllOutstandingInvoicesView.as_view(), name="invoice-outstanding-list"),
 
     # Master filter search
     path("invoices/search/", InvoiceFilteredListView.as_view(), name="invoice-search"),

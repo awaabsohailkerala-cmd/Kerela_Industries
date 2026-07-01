@@ -19,7 +19,7 @@ def _build_draft_preview(invoice: Invoice) -> dict | None:
     if invoice.status != Invoice.Status.DRAFT:
         return None
 
-    from purchases.models import Purchase
+    from purchases.models import PurchaseItem
 
     preview_items     = []
     total_subtotal    = Decimal("0")
@@ -39,7 +39,7 @@ def _build_draft_preview(invoice: Invoice) -> dict | None:
 
         # --- FIFO peek: blended cost from oldest batches (read-only) ---
         batches = (
-            Purchase.objects
+            PurchaseItem.objects
             .filter(product=product, is_deleted=False, remaining_quantity__gt=0)
             .order_by("created_at")
         )
@@ -56,8 +56,13 @@ def _build_draft_preview(invoice: Invoice) -> dict | None:
             for batch in batches:
                 if remaining <= 0:
                     break
-                consume     = min(batch.remaining_quantity, remaining)
-                total_cost += consume * batch.unit_price
+                consume = min(batch.remaining_quantity, remaining)
+                # Tax-inclusive unit cost mirrors _run_fifo: total_price / quantity
+                tax_inclusive = (
+                    batch.total_price / batch.quantity
+                    if batch.quantity > 0 else batch.unit_price
+                )
+                total_cost += consume * tax_inclusive
                 remaining  -= consume
             cogs_per_unit = (
                 total_cost / Decimal(str(qty_to_consume))

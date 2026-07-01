@@ -154,17 +154,25 @@ def get_customer_outstanding(customer_id: int) -> dict:
     from django.db.models import Sum, Case, When, F
     from decimal import Decimal
 
+    get_customer_by_id(customer_id)
+
     invoices = Invoice.objects.filter(
         customer_id=customer_id,
         is_deleted=False,
     ).exclude(status=Invoice.Status.DRAFT)
 
     agg = invoices.aggregate(
-        total_billed             = Sum("grand_total"),
+        total_billed             = Sum(
+            Case(When(grand_total=0, then=F("subtotal")), default=F("grand_total"))
+        ),
         total_cash_received      = Sum("cash_received"),
-        total_credit_outstanding = Sum("credit_outstanding"),
+        total_credit_outstanding = Sum(
+            Case(When(grand_total=0, then=F("subtotal") - F("cash_received")), default=F("credit_outstanding"))
+        ),
         total_paid               = Sum("total_paid"),
-        total_remaining          = Sum("remaining_amount"),
+        total_remaining          = Sum(
+            Case(When(grand_total=0, then=F("subtotal") - F("cash_received")), default=F("remaining_amount"))
+        ),
     )
 
     return {

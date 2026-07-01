@@ -183,13 +183,19 @@ def _run_fifo(*, invoice_item: InvoiceItem, quantity: int, user) -> Decimal:
             break
 
         consume = min(batch.remaining_quantity, remaining_to_consume)
-        cost_for_layer = consume * batch.unit_price
+        # Use tax-inclusive unit cost: total_price / quantity
+        # This is the real cost we paid (includes GST added, WHT deducted)
+        tax_inclusive_unit_cost = (
+            batch.total_price / batch.quantity
+            if batch.quantity > 0 else batch.unit_price
+        )
+        cost_for_layer = consume * tax_inclusive_unit_cost
 
         FIFOLedger.objects.create(
             invoice_item=invoice_item,
             purchase=batch,
             quantity=consume,
-            unit_cost=batch.unit_price,
+            unit_cost=tax_inclusive_unit_cost,
         )
 
         batch.remaining_quantity -= consume
@@ -714,7 +720,7 @@ def accept_return(*, return_id: int, user) -> Return:
     Payment.objects.create(
         invoice=invoice,
         amount=-total_return_amount,
-        method=Payment.Method.CREDIT,
+        method=Payment.Method.CASH,  # credit note — reduces customer outstanding
         payment_date=timezone.now().date(),
         note=f"Auto credit note for Return #{return_record.id}",
         created_by=user,

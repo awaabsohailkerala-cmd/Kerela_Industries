@@ -348,6 +348,8 @@ class CustomerOutstandingListView(generics.ListAPIView):
         p = self.request.query_params
         return get_customers_with_outstanding(
             search          = p.get("search"),
+            customer_name   = p.get("customer_name"),
+            customer_code   = p.get("customer_code"),
             payment_status  = p.get("payment_status"),
             min_outstanding = p.get("min_outstanding"),
             max_outstanding = p.get("max_outstanding"),
@@ -535,3 +537,42 @@ class SavedPDFDeleteView(generics.DestroyAPIView):
     def destroy(self, request, saved_pdf_id):
         delete_saved_pdf(saved_pdf_id=saved_pdf_id, user=request.user)
         return Response({"detail": "PDF deleted."}, status=status.HTTP_200_OK)
+
+
+# ---------------------------------------------------------------------------
+# All outstanding invoices
+# ---------------------------------------------------------------------------
+
+from .selectors import get_all_outstanding_invoices
+
+
+class AllOutstandingInvoicesView(generics.ListAPIView):
+    """
+    GET /billing/invoices/outstanding/
+    All invoices with credit_outstanding > 0, across ALL customers.
+
+    Query params:
+        customer_name   : partial match on customer name
+        customer_code   : partial match on customer code
+        payment_status  : unpaid | partial
+        date_from       : YYYY-MM-DD
+        date_to         : YYYY-MM-DD
+        min_outstanding : minimum credit_outstanding
+        max_outstanding : maximum credit_outstanding
+
+    Results sorted by highest outstanding first.
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class   = InvoiceReadSerializer
+
+    def get_queryset(self):
+        p = self.request.query_params
+        return get_all_outstanding_invoices(
+            customer_name   = p.get("customer_name"),
+            customer_code   = p.get("customer_code"),
+            payment_status  = p.get("payment_status"),
+            date_from       = p.get("date_from"),
+            date_to         = p.get("date_to"),
+            min_outstanding = p.get("min_outstanding"),
+            max_outstanding = p.get("max_outstanding"),
+        )
