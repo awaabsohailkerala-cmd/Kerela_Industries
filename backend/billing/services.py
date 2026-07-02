@@ -537,6 +537,10 @@ def confirm_invoice(*, invoice_id: int, user) -> Invoice:
     invoice.payment_status     = Invoice.PaymentStatus.UNPAID
     invoice.save(update_fields=["credit_outstanding", "remaining_amount", "payment_status"])
 
+    # Sync CashFlow: customer owes full grand_total
+    from cash_flow.services import sync_invoice_confirmed
+    sync_invoice_confirmed(grand_total=invoice.grand_total, user=user)
+
     return invoice
 
 
@@ -574,14 +578,24 @@ def create_payment(
         updated_by=user,
     )
     _sync_invoice_payment_summary(invoice)
+
+    # Sync CashFlow: cash in hand increases, customer outstanding decreases
+    from cash_flow.services import sync_invoice_payment_received
+    sync_invoice_payment_received(amount=amount, user=user)
+
     return payment
 
 
 def delete_payment(*, payment_id: int, user) -> None:
     payment = get_payment_by_id(payment_id)
     invoice = payment.invoice
+    amount  = payment.amount
     _soft_delete(payment, user)
     _sync_invoice_payment_summary(invoice)
+
+    # Reverse CashFlow sync only for positive payments (not credit notes)
+    from cash_flow.services import sync_invoice_payment_deleted
+    sync_invoice_payment_deleted(amount=amount, user=user)
 
 
 # ---------------------------------------------------------------------------
@@ -727,5 +741,9 @@ def accept_return(*, return_id: int, user) -> Return:
         updated_by=user,
     )
     _sync_invoice_payment_summary(invoice)
+
+    # Sync CashFlow: customer outstanding reduces (goods came back)
+    from cash_flow.services import sync_invoice_return_accepted
+    sync_invoice_return_accepted(return_amount=total_return_amount, user=user)
 
     return return_record
