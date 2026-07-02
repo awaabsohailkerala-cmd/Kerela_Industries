@@ -215,7 +215,7 @@ class PurchaseOrderReadSerializer(serializers.ModelSerializer):
     class Meta:
         model  = PurchaseOrder
         fields = [
-            "id", "order_number", "supplier", "status", "description", "payment_type",
+            "id", "order_number", "supplier", "status", "description", "payment_type", "advance_amount",
             "gross_amount", "gst_total", "wht_total", "net_payable",
             "payable_outstanding", "total_paid", "payment_status", "payment_status_display",
             "draft_preview",
@@ -277,15 +277,32 @@ class PurchaseOrderReadSerializer(serializers.ModelSerializer):
 
 
 class PurchaseOrderCreateSerializer(serializers.Serializer):
-    supplier_id  = serializers.IntegerField()
-    description  = serializers.CharField(required=False, allow_blank=True, default="")
-    payment_type = serializers.ChoiceField(
+    supplier_id    = serializers.IntegerField()
+    description    = serializers.CharField(required=False, allow_blank=True, default="")
+    payment_type   = serializers.ChoiceField(
         choices=["advance", "after_delivery"],
         default="after_delivery",
         required=False,
-        help_text="advance: paid before delivery. after_delivery: paid after. Stored for future use.",
+        help_text="advance: paid before delivery. after_delivery: paid after.",
+    )
+    advance_amount = serializers.DecimalField(
+        max_digits=18, decimal_places=4, default=0, required=False,
+        help_text="Required when payment_type=advance. Immediately deducted from cash in hand.",
     )
     items = PurchaseItemWriteSerializer(many=True)
+
+    def validate(self, attrs):
+        payment_type   = attrs.get("payment_type", "after_delivery")
+        advance_amount = attrs.get("advance_amount", 0)
+        if payment_type == "after_delivery" and advance_amount and advance_amount > 0:
+            raise serializers.ValidationError(
+                {"advance_amount": "advance_amount must be 0 when payment_type is after_delivery."}
+            )
+        if payment_type == "advance" and (not advance_amount or advance_amount <= 0):
+            raise serializers.ValidationError(
+                {"advance_amount": "advance_amount is required and must be > 0 when payment_type is advance."}
+            )
+        return attrs
 
     def validate_items(self, value):
         if not value:
@@ -294,11 +311,14 @@ class PurchaseOrderCreateSerializer(serializers.Serializer):
 
 
 class PurchaseOrderUpdateSerializer(serializers.Serializer):
-    description  = serializers.CharField(required=False, allow_blank=True)
-    payment_type = serializers.ChoiceField(
+    description    = serializers.CharField(required=False, allow_blank=True)
+    payment_type   = serializers.ChoiceField(
         choices=["advance", "after_delivery"],
         required=False,
-        help_text="advance or after_delivery.",
+    )
+    advance_amount = serializers.DecimalField(
+        max_digits=18, decimal_places=4, required=False,
+        help_text="Update the advance amount. Only valid when payment_type=advance.",
     )
     items = PurchaseItemWriteSerializer(many=True)
 
@@ -356,7 +376,7 @@ class PurchaseOrderPaymentSummarySerializer(serializers.ModelSerializer):
         model  = PurchaseOrder
         fields = [
             "id", "order_number", "supplier_name", "supplier_code",
-            "status", "payment_type", "net_payable",
+            "status", "payment_type", "advance_amount", "net_payable",
             "payable_outstanding", "total_paid",
             "payment_status", "payment_status_display",
             "payments",

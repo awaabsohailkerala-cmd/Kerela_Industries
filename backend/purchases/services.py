@@ -234,16 +234,63 @@ def delete_product(*, pk: int, user) -> None:
 # PurchaseOrder — draft create / edit / delete
 # ---------------------------------------------------------------------------
 
+
+def _cancel_advance_payment(*, order, user) -> None:
+    """Cancels any existing advance SupplierPayment on this order and restores cash."""
+    advance_payment = SupplierPayment.objects.filter(
+        order=order,
+        note__startswith="Advance payment",
+        amount__gt=0,
+        is_deleted=False,
+    ).first()
+    if advance_payment:
+        from cash_flow.services import sync_advance_payment_deleted
+        sync_advance_payment_deleted(advance_amount=advance_payment.amount, user=user)
+        advance_payment.is_deleted = True
+        advance_payment.deleted_by = user
+        advance_payment.deleted_at = timezone.now()
+        advance_payment.save(update_fields=["is_deleted", "deleted_by", "deleted_at"])
+
+
+def _update_advance_payment(*, order, old_amount: Decimal, new_amount: Decimal, user) -> None:
+    """Updates the advance SupplierPayment record and adjusts cash_in_hand."""
+    advance_payment = SupplierPayment.objects.filter(
+        order=order,
+        note__startswith="Advance payment",
+        amount__gt=0,
+        is_deleted=False,
+    ).first()
+
+    if advance_payment:
+        advance_payment.amount = new_amount
+        advance_payment.save(update_fields=["amount"])
+    else:
+        # No existing advance payment — create one
+        SupplierPayment.objects.create(
+            order=order,
+            amount=new_amount,
+            method=SupplierPayment.Method.CASH,
+            payment_date=timezone.now().date(),
+            note="Advance payment on draft purchase order creation.",
+            created_by=user,
+            updated_by=user,
+        )
+
+    from cash_flow.services import sync_advance_payment_updated
+    sync_advance_payment_updated(old_amount=old_amount, new_amount=new_amount, user=user)
+
+
 @transaction.atomic
 def create_purchase_order(
     *, supplier_id: int, items: list[dict], description: str = "",
-    payment_type: str = "after_delivery", user,
+    payment_type: str = "after_delivery", advance_amount: Decimal = Decimal("0"), user,
 ) -> PurchaseOrder:
     """
     Creates a DRAFT PurchaseOrder with line items.
     No inventory or debt effect at this stage.
-    payment_type: "advance" or "after_delivery" — stored for future automation.
-    items = [{"product_id": 1, "quantity": 10, "unit_price": 80, "gst": 18, "wht": 1, "description": ""}, ...]
+    If payment_type=advance and advance_amount > 0:
+        - advance_amount immediately deducted from cash_in_hand
+        - A SupplierPayment record is auto-created for the advance
     """
     from rest_framework.exceptions import ValidationError
 
@@ -259,15 +306,37 @@ def create_purchase_order(
         seen_products.add(item["product_id"])
         get_product_by_id(item["product_id"])  # validates existence
 
+    # Validate advance_amount
+    if payment_type == "after_delivery":
+        advance_amount = Decimal("0")
+    if advance_amount < 0:
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError({"advance_amount": "Advance amount cannot be negative."})
+
     order = PurchaseOrder.objects.create(
         order_number=_generate_order_number(),
         supplier_id=supplier_id,
         status=PurchaseOrder.Status.DRAFT,
         description=description,
         payment_type=payment_type,
+        advance_amount=advance_amount,
         created_by=user,
         updated_by=user,
     )
+
+    # If advance payment: deduct from cash_in_hand and record in payment history
+    if payment_type == "advance" and advance_amount > 0:
+        SupplierPayment.objects.create(
+            order=order,
+            amount=advance_amount,
+            method=SupplierPayment.Method.CASH,
+            payment_date=timezone.now().date(),
+            note="Advance payment on draft purchase order creation.",
+            created_by=user,
+            updated_by=user,
+        )
+        from cash_flow.services import sync_advance_payment_created
+        sync_advance_payment_created(advance_amount=advance_amount, user=user)
 
     for item in items:
         PurchaseItem.objects.create(
@@ -288,12 +357,13 @@ def create_purchase_order(
 @transaction.atomic
 def update_purchase_order_items(
     *, order_id: int, items: list[dict], description: str = None,
-    payment_type: str = None, user,
+    payment_type: str = None, advance_amount: Decimal = None, user,
 ) -> PurchaseOrder:
     """
     Replaces all line items on a DRAFT order.
     Confirmed orders cannot be edited.
-    payment_type can also be updated while in draft.
+    payment_type and advance_amount can also be updated while in draft.
+    advance_amount changes auto-adjust cash_in_hand.
     """
     from rest_framework.exceptions import ValidationError
 
@@ -329,19 +399,45 @@ def update_purchase_order_items(
 
     if description is not None:
         order.description = description
+
+    # Handle payment_type change
     if payment_type is not None:
+        old_payment_type = order.payment_type
         order.payment_type = payment_type
+        # If switching from advance to after_delivery — refund advance
+        if old_payment_type == "advance" and payment_type == "after_delivery":
+            old_advance = order.advance_amount
+            if old_advance > 0:
+                _cancel_advance_payment(order=order, user=user)
+                order.advance_amount = Decimal("0")
+
+    # Handle advance_amount change
+    if advance_amount is not None and order.payment_type == "advance":
+        if advance_amount < 0:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({"advance_amount": "Advance amount cannot be negative."})
+        old_advance = order.advance_amount
+        if advance_amount != old_advance:
+            _update_advance_payment(order=order, old_amount=old_advance, new_amount=advance_amount, user=user)
+            order.advance_amount = advance_amount
+
     order.updated_by = user
-    order.save(update_fields=["description", "payment_type", "updated_by", "updated_at"])
+    order.save(update_fields=["description", "payment_type", "advance_amount", "updated_by", "updated_at"])
     return order
 
 
 def delete_purchase_order(*, order_id: int, user) -> None:
-    """Only DRAFT orders can be deleted."""
+    """Only DRAFT orders can be deleted. Refunds advance payment if applicable."""
     from rest_framework.exceptions import ValidationError
     order = get_purchase_order_by_id(order_id)
     if order.status != PurchaseOrder.Status.DRAFT:
         raise ValidationError({"status": "Only draft purchase orders can be deleted."})
+
+    # Refund advance if this was an advance order
+    if order.payment_type == "advance" and order.advance_amount > 0:
+        from cash_flow.services import sync_advance_payment_deleted
+        sync_advance_payment_deleted(advance_amount=order.advance_amount, user=user)
+
     _soft_delete(order, user)
 
 
@@ -383,11 +479,28 @@ def confirm_purchase_order(*, order_id: int, user) -> PurchaseOrder:
     order.updated_by   = user
     order.save(update_fields=["status", "confirmed_by", "confirmed_at", "updated_by", "updated_at"])
 
-    # Auto-set full net_payable as outstanding debt to supplier
-    order.refresh_from_db(fields=["net_payable"])
-    order.payable_outstanding = order.net_payable
-    order.payment_status      = PurchaseOrder.PaymentStatus.UNPAID
+    # Reload fresh net_payable
+    order.refresh_from_db(fields=["net_payable", "advance_amount", "payment_type"])
+    advance = order.advance_amount if order.payment_type == "advance" else Decimal("0")
+
+    # Cap advance at net_payable (safety guard)
+    if advance > order.net_payable:
+        advance = order.net_payable
+        order.advance_amount = advance
+        order.save(update_fields=["advance_amount"])
+
+    remaining_payable = max(Decimal("0"), order.net_payable - advance)
+    order.payable_outstanding = remaining_payable
+    order.payment_status = (
+        PurchaseOrder.PaymentStatus.PAID if remaining_payable == 0
+        else PurchaseOrder.PaymentStatus.PARTIAL if advance > 0
+        else PurchaseOrder.PaymentStatus.UNPAID
+    )
     order.save(update_fields=["payable_outstanding", "payment_status"])
+
+    # Sync CashFlow: outstanding = net_payable - advance (advance already in cash)
+    from cash_flow.services import sync_purchase_order_confirmed
+    sync_purchase_order_confirmed(net_payable=order.net_payable, advance_amount=advance, user=user)
 
     return order
 
@@ -425,14 +538,25 @@ def create_supplier_payment(
         updated_by=user,
     )
     _sync_order_payable(order)
+
+    # Sync CashFlow: cash out, payable reduces, paid increases
+    from cash_flow.services import sync_supplier_payment_made
+    sync_supplier_payment_made(amount=amount, user=user)
+
     return payment
 
 
 def delete_supplier_payment(*, payment_id: int, user) -> None:
     payment = get_supplier_payment_by_id(payment_id)
     order   = payment.order
+    amount  = payment.amount
     _soft_delete(payment, user)
     _sync_order_payable(order)
+
+    # Reverse CashFlow sync only for positive non-advance payments
+    if amount > 0 and not payment.note.startswith("Advance payment"):
+        from cash_flow.services import sync_supplier_payment_deleted
+        sync_supplier_payment_deleted(amount=amount, user=user)
 
 
 # ---------------------------------------------------------------------------
@@ -597,5 +721,9 @@ def accept_purchase_return(*, return_id: int, user) -> PurchaseReturn:
         updated_by=user,
     )
     _sync_order_payable(order)
+
+    # Sync CashFlow: payable_outstanding reduces by return amount
+    from cash_flow.services import sync_purchase_return_accepted
+    sync_purchase_return_accepted(return_amount=total_amount, user=user)
 
     return return_record

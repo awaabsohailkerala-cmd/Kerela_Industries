@@ -145,7 +145,15 @@ class PurchaseOrder(AuditMixin):
     payment_type = models.CharField(
         max_length=20, choices=PaymentType.choices,
         default=PaymentType.AFTER_DELIVERY,
-        help_text="Advance payment or payment after delivery. Stored for future automation.",
+        help_text="Advance payment or payment after delivery.",
+    )
+    advance_amount = models.DecimalField(
+        max_digits=18, decimal_places=4, default=0,
+        help_text=(
+            "Amount paid in advance (only when payment_type=advance). "
+            "Immediately deducted from cash_in_hand on draft creation. "
+            "Capped at net_payable on confirmation."
+        ),
     )
 
     confirmed_by = models.ForeignKey(

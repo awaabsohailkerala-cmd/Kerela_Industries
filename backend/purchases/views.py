@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.http import HttpResponse
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
@@ -270,6 +271,7 @@ class PurchaseOrderListCreateView(generics.ListCreateAPIView):
             items=d["items"],
             description=d.get("description", ""),
             payment_type=d.get("payment_type", "after_delivery"),
+            advance_amount=d.get("advance_amount", Decimal("0")),
             user=request.user,
         )
         return Response(PurchaseOrderReadSerializer(obj).data, status=status.HTTP_201_CREATED)
@@ -329,6 +331,7 @@ class PurchaseOrderRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIVi
             items=d["items"],
             description=d.get("description"),
             payment_type=d.get("payment_type"),
+            advance_amount=d.get("advance_amount"),
             user=request.user,
         )
         return Response(PurchaseOrderReadSerializer(obj).data)
