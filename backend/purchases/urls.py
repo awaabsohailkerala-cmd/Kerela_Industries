@@ -139,6 +139,10 @@ urlpatterns = [
          SupplierPaymentListCreateView.as_view(),
          name="supplier-payment-list-create"),
 
+    path("payments/",
+         AllSupplierPaymentsView.as_view(),
+         name="supplier-payment-list-all"),
+
     path("payments/<int:pk>/",
          SupplierPaymentDestroyView.as_view(),
          name="supplier-payment-delete"),

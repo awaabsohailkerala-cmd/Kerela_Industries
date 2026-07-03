@@ -644,3 +644,38 @@ class AllOutstandingOrdersView(generics.ListAPIView):
             min_outstanding = p.get("min_outstanding"),
             max_outstanding = p.get("max_outstanding"),
         )
+
+
+# ---------------------------------------------------------------------------
+# Global supplier payment search
+# ---------------------------------------------------------------------------
+
+from .selectors import get_all_supplier_payments
+
+
+class AllSupplierPaymentsView(generics.ListAPIView):
+    """
+    GET /purchases/payments/
+    Search all supplier payments across all orders.
+
+    Query params:
+        reference     : SPY reference number (partial match)
+        supplier_name : partial match
+        supplier_code : partial match
+        method        : cash | jazzcash | easypaisa | bank
+        date_from     : YYYY-MM-DD
+        date_to       : YYYY-MM-DD
+    """
+    permission_classes = [IsAdminOrSuperuser]
+    serializer_class   = SupplierPaymentReadSerializer
+
+    def get_queryset(self):
+        p = self.request.query_params
+        return get_all_supplier_payments(
+            reference     = p.get("reference"),
+            supplier_name = p.get("supplier_name"),
+            supplier_code = p.get("supplier_code"),
+            method        = p.get("method"),
+            date_from     = p.get("date_from"),
+            date_to       = p.get("date_to"),
+        )

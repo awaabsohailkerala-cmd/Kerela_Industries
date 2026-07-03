@@ -244,11 +244,43 @@ def get_all_returns(
 # Supplier Payment
 # ---------------------------------------------------------------------------
 
-def get_payments_for_order(order_id: int) -> QuerySet:
+def get_payments_for_order(order_id: int, *, reference: str = None) -> QuerySet:
     from .models import SupplierPayment
-    return SupplierPayment.objects.filter(
+    qs = SupplierPayment.objects.filter(
         order_id=order_id, is_deleted=False,
     ).select_related("created_by").order_by("-payment_date")
+    if _clean(reference):
+        qs = qs.filter(reference_number__icontains=_clean(reference))
+    return qs
+
+
+def get_all_supplier_payments(
+    *,
+    reference     : str = None,
+    supplier_name : str = None,
+    supplier_code : str = None,
+    method        : str = None,
+    date_from     : str = None,
+    date_to       : str = None,
+) -> QuerySet:
+    """Search supplier payments across all orders with full filter support."""
+    from .models import SupplierPayment
+    qs = SupplierPayment.objects.filter(
+        is_deleted=False, amount__gt=0,
+    ).select_related("order__supplier", "created_by").order_by("-payment_date")
+    if _clean(reference):
+        qs = qs.filter(reference_number__icontains=_clean(reference))
+    if _clean(supplier_name):
+        qs = qs.filter(order__supplier__name__icontains=_clean(supplier_name))
+    if _clean(supplier_code):
+        qs = qs.filter(order__supplier__code__icontains=_clean(supplier_code))
+    if _clean(method):
+        qs = qs.filter(method=_clean(method))
+    if _clean(date_from):
+        qs = qs.filter(payment_date__gte=_clean(date_from))
+    if _clean(date_to):
+        qs = qs.filter(payment_date__lte=_clean(date_to))
+    return qs
 
 
 def get_supplier_payment_by_id(pk: int):

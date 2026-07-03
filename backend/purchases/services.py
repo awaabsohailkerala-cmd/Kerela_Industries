@@ -44,6 +44,34 @@ def _generate_order_number() -> str:
     return f"{prefix}{seq:04d}"
 
 
+def _generate_supplier_payment_reference() -> str:
+    """Generates sequential supplier payment reference: SPY-2026-0001."""
+    year   = timezone.now().year
+    prefix = f"SPY-{year}-"
+    last   = (
+        SupplierPayment.all_objects
+        .filter(reference_number__startswith=prefix)
+        .order_by("-reference_number")
+        .first()
+    )
+    seq = int(last.reference_number.split("-")[-1]) + 1 if last else 1
+    return f"{prefix}{seq:04d}"
+
+
+def _generate_purchase_return_reference() -> str:
+    """Generates sequential purchase return reference: RTN-2026-0001."""
+    year   = timezone.now().year
+    prefix = f"RTN-{year}-"
+    last   = (
+        PurchaseReturn.all_objects
+        .filter(reference_number__startswith=prefix)
+        .order_by("-reference_number")
+        .first()
+    )
+    seq = int(last.reference_number.split("-")[-1]) + 1 if last else 1
+    return f"{prefix}{seq:04d}"
+
+
 def _recalculate_order_totals(order: PurchaseOrder) -> None:
     """
     Recomputes PurchaseOrder header totals from all line items.
@@ -172,7 +200,13 @@ def create_supplier(*, name: str, code: str, user) -> Supplier:
     from rest_framework.exceptions import ValidationError
     if Supplier.objects.filter(code__iexact=code, is_deleted=False).exists():
         raise ValidationError({"code": "A supplier with this code already exists."})
-    return Supplier.objects.create(name=name, code=code.upper(), created_by=user, updated_by=user)
+    supplier = Supplier.objects.create(name=name, code=code.upper(), created_by=user, updated_by=user)
+
+    # Auto-create empty ledger for this supplier
+    from ledger.services import create_ledger_for_supplier
+    create_ledger_for_supplier(supplier=supplier)
+
+    return supplier
 
 
 def update_supplier(*, pk: int, name: str = None, code: str = None, user) -> Supplier:
@@ -326,8 +360,9 @@ def create_purchase_order(
 
     # If advance payment: deduct from cash_in_hand and record in payment history
     if payment_type == "advance" and advance_amount > 0:
-        SupplierPayment.objects.create(
+        adv_payment = SupplierPayment.objects.create(
             order=order,
+            reference_number=_generate_supplier_payment_reference(),
             amount=advance_amount,
             method=SupplierPayment.Method.CASH,
             payment_date=timezone.now().date(),
@@ -337,6 +372,16 @@ def create_purchase_order(
         )
         from cash_flow.services import sync_advance_payment_created
         sync_advance_payment_created(advance_amount=advance_amount, user=user)
+
+        # Ledger entry: advance debit
+        from ledger.services import add_advance_entry
+        add_advance_entry(
+            supplier=order.supplier,
+            supplier_payment=adv_payment,
+            amount=advance_amount,
+            date=timezone.now().date(),
+            user=user,
+        )
 
     for item in items:
         PurchaseItem.objects.create(
@@ -502,6 +547,16 @@ def confirm_purchase_order(*, order_id: int, user) -> PurchaseOrder:
     from cash_flow.services import sync_purchase_order_confirmed
     sync_purchase_order_confirmed(net_payable=order.net_payable, advance_amount=advance, user=user)
 
+    # Ledger entry: credit (we owe supplier net_payable)
+    from ledger.services import add_purchase_entry
+    add_purchase_entry(
+        supplier=order.supplier,
+        purchase_order=order,
+        amount=order.net_payable,
+        date=order.confirmed_at.date(),
+        user=user,
+    )
+
     return order
 
 
@@ -530,6 +585,7 @@ def create_supplier_payment(
 
     payment = SupplierPayment.objects.create(
         order=order,
+        reference_number=_generate_supplier_payment_reference(),
         amount=amount,
         method=method,
         payment_date=payment_date,
@@ -542,6 +598,16 @@ def create_supplier_payment(
     # Sync CashFlow: cash out, payable reduces, paid increases
     from cash_flow.services import sync_supplier_payment_made
     sync_supplier_payment_made(amount=amount, user=user)
+
+    # Ledger entry: debit (we paid supplier)
+    from ledger.services import add_payment_entry
+    add_payment_entry(
+        supplier=order.supplier,
+        supplier_payment=payment,
+        amount=amount,
+        date=payment_date,
+        user=user,
+    )
 
     return payment
 
@@ -584,6 +650,7 @@ def create_purchase_return(
 
     return_record = PurchaseReturn.objects.create(
         order=order,
+        reference_number=_generate_purchase_return_reference(),
         status=PurchaseReturn.Status.PENDING,
         note=note,
         created_by=user,
@@ -713,10 +780,11 @@ def accept_purchase_return(*, return_id: int, user) -> PurchaseReturn:
     order = return_record.order
     SupplierPayment.objects.create(
         order=order,
+        reference_number=_generate_supplier_payment_reference(),
         amount=-total_amount,
         method=SupplierPayment.Method.CASH,
         payment_date=timezone.now().date(),
-        note=f"Auto credit note for Return #{return_record.id}",
+        note=f"Auto credit note for Return #{return_record.reference_number}",
         created_by=user,
         updated_by=user,
     )
@@ -725,5 +793,15 @@ def accept_purchase_return(*, return_id: int, user) -> PurchaseReturn:
     # Sync CashFlow: payable_outstanding reduces by return amount
     from cash_flow.services import sync_purchase_return_accepted
     sync_purchase_return_accepted(return_amount=total_amount, user=user)
+
+    # Ledger entry: return debit (supplier owes us back)
+    from ledger.services import add_return_entry
+    add_return_entry(
+        supplier=return_record.order.supplier,
+        purchase_return=return_record,
+        amount=total_amount,
+        date=return_record.accepted_at.date(),
+        user=user,
+    )
 
     return return_record

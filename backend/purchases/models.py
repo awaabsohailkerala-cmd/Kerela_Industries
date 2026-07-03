@@ -263,9 +263,11 @@ class PurchaseReturn(AuditMixin):
         PENDING  = "pending",  "Pending"
         ACCEPTED = "accepted", "Accepted"
 
-    order       = models.ForeignKey(PurchaseOrder, on_delete=models.PROTECT, related_name="returns")
-    status      = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
-    note        = models.TextField(blank=True, default="")
+    order            = models.ForeignKey(PurchaseOrder, on_delete=models.PROTECT, related_name="returns")
+    reference_number = models.CharField(max_length=30, unique=True, editable=False,
+                           help_text="Auto-generated e.g. RTN-2026-0001")
+    status           = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
+    note             = models.TextField(blank=True, default="")
     accepted_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
         related_name="accepted_purchase_returns",
@@ -334,11 +336,13 @@ class SupplierPayment(AuditMixin):
         EASYPAISA = "easypaisa", "Easypaisa"
         BANK      = "bank",      "Bank Transfer"
 
-    order        = models.ForeignKey(PurchaseOrder, on_delete=models.PROTECT, related_name="payments")
-    amount       = models.DecimalField(max_digits=18, decimal_places=4)
-    method       = models.CharField(max_length=12, choices=Method.choices)
-    payment_date = models.DateField()
-    note         = models.CharField(max_length=255, blank=True, default="")
+    order            = models.ForeignKey(PurchaseOrder, on_delete=models.PROTECT, related_name="payments")
+    reference_number = models.CharField(max_length=30, unique=True, editable=False,
+                           help_text="Auto-generated e.g. SPY-2026-0001")
+    amount           = models.DecimalField(max_digits=18, decimal_places=4)
+    method           = models.CharField(max_length=12, choices=Method.choices)
+    payment_date     = models.DateField()
+    note             = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
         verbose_name        = "Supplier Payment"

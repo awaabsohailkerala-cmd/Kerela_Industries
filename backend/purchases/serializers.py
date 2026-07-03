@@ -339,7 +339,7 @@ class SupplierPaymentReadSerializer(serializers.ModelSerializer):
     class Meta:
         model  = SupplierPayment
         fields = [
-            "id", "order", "amount", "method", "method_display",
+            "id", "order", "reference_number", "amount", "method", "method_display",
             "payment_date", "note", "created_by", "created_at",
         ]
         read_only_fields = fields
@@ -441,7 +441,7 @@ class PurchaseReturnReadSerializer(serializers.ModelSerializer):
     class Meta:
         model  = PurchaseReturn
         fields = [
-            "id", "order", "order_number", "supplier_name", "status",
+            "id", "order", "order_number", "supplier_name", "reference_number", "status",
             "total_return_gross", "total_return_gst", "total_return_wht", "total_return_amount",
             "items", "note",
             "accepted_by", "accepted_at",
