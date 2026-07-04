@@ -66,11 +66,12 @@ def _recalculate_snapshots_from(ledger: SupplierLedger, from_year_month: str) ->
         month_debit  = agg["total_debit"]  or Decimal("0")
 
         closing_balance = prior_balance + month_credit - month_debit
-
+        # Store real balance including negative (overpaid state)
+        # Negative balance means supplier owes us money
         SupplierLedgerSnapshot.objects.update_or_create(
             ledger=ledger,
             year_month=ym,
-            defaults={"closing_balance": max(Decimal("0"), closing_balance)},
+            defaults={"closing_balance": closing_balance},
         )
 
 
@@ -317,19 +318,22 @@ def _get_entries_with_running_balance(
         opening_balance -= (pre_month_agg["total_debit"]  or Decimal("0"))
         opening_balance  = max(Decimal("0"), opening_balance)
 
-    # Fetch entries in the query window
+    # Fetch entries in the query window.
+    # Order: date ASC, then created_at ASC (exact chronological order of events).
+    # Same-day entries appear in the order they were actually created in the system.
     qs = SupplierLedgerEntry.objects.filter(ledger=ledger).order_by("date", "created_at")
+
     if date_from:
         qs = qs.filter(date__gte=date_from)
     if date_to:
         qs = qs.filter(date__lte=date_to)
 
-    # Compute running balance
+    # Compute running balance — allow negative temporarily for display accuracy,
+    # but show the real balance so user can see when they overpaid
     result          = []
     running_balance = opening_balance
     for entry in qs:
         running_balance = running_balance + entry.credit - entry.debit
-        running_balance = max(Decimal("0"), running_balance)
         result.append({
             "date"            : entry.date,
             "details"         : entry.details,
@@ -337,7 +341,7 @@ def _get_entries_with_running_balance(
             "entry_type"      : entry.entry_type,
             "debit"           : entry.debit,
             "credit"          : entry.credit,
-            "balance"         : running_balance,
+            "balance"         : running_balance,   # real balance, can show negative if overpaid
         })
 
     closing_balance = running_balance
