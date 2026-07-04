@@ -270,7 +270,10 @@ def delete_product(*, pk: int, user) -> None:
 
 
 def _cancel_advance_payment(*, order, user) -> None:
-    """Cancels any existing advance SupplierPayment on this order and restores cash."""
+    """
+    Cancels any existing advance SupplierPayment on this order and restores cash.
+    Also removes the linked ledger entry and recalculates snapshots.
+    """
     advance_payment = SupplierPayment.objects.filter(
         order=order,
         note__startswith="Advance payment",
@@ -280,6 +283,11 @@ def _cancel_advance_payment(*, order, user) -> None:
     if advance_payment:
         from cash_flow.services import sync_advance_payment_deleted
         sync_advance_payment_deleted(advance_amount=advance_payment.amount, user=user)
+
+        # Remove ledger entry
+        from ledger.services import remove_ledger_entry_for_payment
+        remove_ledger_entry_for_payment(supplier_payment=advance_payment)
+
         advance_payment.is_deleted = True
         advance_payment.deleted_by = user
         advance_payment.deleted_at = timezone.now()
@@ -287,7 +295,13 @@ def _cancel_advance_payment(*, order, user) -> None:
 
 
 def _update_advance_payment(*, order, old_amount: Decimal, new_amount: Decimal, user) -> None:
-    """Updates the advance SupplierPayment record and adjusts cash_in_hand."""
+    """
+    Updates the advance SupplierPayment record and adjusts cash_in_hand.
+    Also updates the ledger entry amount so it stays in sync.
+    """
+    from ledger.models import SupplierLedgerEntry
+    from ledger.services import _recalculate_snapshots_from, _get_year_month
+
     advance_payment = SupplierPayment.objects.filter(
         order=order,
         note__startswith="Advance payment",
@@ -296,18 +310,40 @@ def _update_advance_payment(*, order, old_amount: Decimal, new_amount: Decimal, 
     ).first()
 
     if advance_payment:
+        # Update payment amount
         advance_payment.amount = new_amount
         advance_payment.save(update_fields=["amount"])
+
+        # Update linked ledger entry amount
+        ledger_entry = SupplierLedgerEntry.objects.filter(
+            supplier_payment=advance_payment
+        ).first()
+        if ledger_entry:
+            ledger_entry.debit = new_amount
+            ledger_entry.save(update_fields=["debit"])
+            # Recalculate snapshots from this entry's month forward
+            from ledger.models import SupplierLedger
+            ledger = ledger_entry.ledger
+            _recalculate_snapshots_from(ledger, _get_year_month(ledger_entry.date))
     else:
-        # No existing advance payment — create one
-        SupplierPayment.objects.create(
+        # No existing advance payment — create one with reference number + ledger entry
+        adv_payment = SupplierPayment.objects.create(
             order=order,
+            reference_number=_generate_supplier_payment_reference(),
             amount=new_amount,
             method=SupplierPayment.Method.CASH,
             payment_date=timezone.now().date(),
             note="Advance payment on draft purchase order creation.",
             created_by=user,
             updated_by=user,
+        )
+        from ledger.services import add_advance_entry
+        add_advance_entry(
+            supplier=order.supplier,
+            supplier_payment=adv_payment,
+            amount=new_amount,
+            date=timezone.now().date(),
+            user=user,
         )
 
     from cash_flow.services import sync_advance_payment_updated

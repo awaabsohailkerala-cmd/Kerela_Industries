@@ -22,16 +22,22 @@ def get_cashflow_stats() -> dict:
 
     return {
         # Receivables
+        # cash_in_hand: actual cash available after expenses and supplier payments
         "cash_in_hand"              : cf.cash_in_hand,
+        # customer_outstanding: what customers still owe us
         "customer_outstanding"      : cf.customer_outstanding,
+        # total_invoices_cash: GROSS collected from customers (never reduced by expenses/payments)
         "total_invoices_cash"       : cf.total_invoices_cash,
         "total_number_of_invoices"  : Invoice.objects.filter(
                                           is_deleted=False
                                       ).exclude(status="draft").count(),
 
         # Payables
+        # total_paid_payables: total cash ever paid to suppliers
         "total_paid_payables"           : cf.total_paid_payables,
+        # total_outstanding_payable: what we still owe suppliers
         "total_outstanding_payable"     : cf.supplier_payable_outstanding,
+        # total_purchases_cash: total purchase value confirmed (paid + outstanding)
         "total_purchases_cash"          : cf.total_purchases_cash,
         "total_number_of_purchases"     : PurchaseOrder.objects.filter(
                                               is_deleted=False,
@@ -114,8 +120,9 @@ def get_invoice_payments_breakdown(
     method         : str = None,
 ) -> QuerySet:
     """
-    Breakdown of all positive invoice payments (cash received from customers).
-    Supports full filtering for cash_in_hand and customer_outstanding drill-down.
+    Breakdown of all POSITIVE invoice payments received from customers.
+    This is the total_invoices_cash breakdown (gross collections only).
+    For full cash_in_hand movements (expenses, supplier payments) use get_cash_in_hand_breakdown().
     """
     from billing.models import Payment
 
@@ -143,6 +150,98 @@ def get_invoice_payments_breakdown(
         qs = qs.filter(method=_clean(method))
 
     return qs.order_by("-payment_date")
+
+
+def get_cash_in_hand_breakdown(
+    *,
+    date_from    : str = None,
+    date_to      : str = None,
+    movement_type: str = None,
+) -> list:
+    """
+    Full cash_in_hand breakdown — ALL movements (inflows AND outflows):
+      + Invoice payments received      (inflow)
+      - Expenses paid                  (outflow)
+      - Supplier payments made         (outflow)
+      - Advance payments to suppliers  (outflow)
+
+    movement_type: inflow | outflow (optional filter)
+    Returns sorted list of dicts, newest first.
+    """
+    from billing.models import Payment
+    from purchases.models import SupplierPayment
+    from .models import Expense
+
+    movements = []
+
+    # --- Inflows: positive invoice payments ---
+    inv_qs = Payment.objects.filter(
+        is_deleted=False, amount__gt=0,
+        invoice__is_deleted=False,
+    ).exclude(invoice__status="draft").select_related("invoice__customer")
+
+    if _clean(date_from):
+        inv_qs = inv_qs.filter(payment_date__gte=_clean(date_from))
+    if _clean(date_to):
+        inv_qs = inv_qs.filter(payment_date__lte=_clean(date_to))
+
+    for p in inv_qs:
+        movements.append({
+            "direction"  : "inflow",
+            "type"       : "invoice_payment",
+            "date"       : str(p.payment_date),
+            "description": f"Received from {p.invoice.customer.name} ({p.invoice.bill_number})",
+            "reference"  : p.reference_number,
+            "amount"     : p.amount,
+            "method"     : p.method,
+        })
+
+    # --- Outflows: expenses ---
+    exp_qs = Expense.objects.filter(is_deleted=False)
+    if _clean(date_from):
+        exp_qs = exp_qs.filter(expense_date__gte=_clean(date_from))
+    if _clean(date_to):
+        exp_qs = exp_qs.filter(expense_date__lte=_clean(date_to))
+
+    for e in exp_qs:
+        movements.append({
+            "direction"  : "outflow",
+            "type"       : "expense",
+            "date"       : str(e.expense_date),
+            "description": f"Expense: {e.name} ({e.category.name})",
+            "reference"  : f"EXP-{e.id}",
+            "amount"     : e.amount,
+            "method"     : None,
+        })
+
+    # --- Outflows: supplier payments ---
+    sup_qs = SupplierPayment.objects.filter(
+        is_deleted=False, amount__gt=0,
+    ).select_related("order__supplier")
+    if _clean(date_from):
+        sup_qs = sup_qs.filter(payment_date__gte=_clean(date_from))
+    if _clean(date_to):
+        sup_qs = sup_qs.filter(payment_date__lte=_clean(date_to))
+
+    for p in sup_qs:
+        ptype = "advance_payment" if p.note.startswith("Advance payment") else "supplier_payment"
+        movements.append({
+            "direction"  : "outflow",
+            "type"       : ptype,
+            "date"       : str(p.payment_date),
+            "description": f"Paid to {p.order.supplier.name} ({p.order.order_number})",
+            "reference"  : p.reference_number,
+            "amount"     : p.amount,
+            "method"     : p.method,
+        })
+
+    # Filter by direction if requested
+    if _clean(movement_type):
+        movements = [m for m in movements if m["direction"] == _clean(movement_type)]
+
+    # Sort newest first
+    movements.sort(key=lambda x: x["date"], reverse=True)
+    return movements
 
 
 def get_customer_outstanding_breakdown(

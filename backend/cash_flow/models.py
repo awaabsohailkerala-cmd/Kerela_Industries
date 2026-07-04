@@ -102,14 +102,20 @@ class CashFlow(models.Model):
     """
 
     # ---- Receivables (from customers) ----
-    cash_in_hand          = models.DecimalField(max_digits=20, decimal_places=4, default=0)
-    customer_outstanding  = models.DecimalField(max_digits=20, decimal_places=4, default=0)
-    # total_invoices_cash = cash_in_hand + customer_outstanding (computed property)
+    cash_in_hand             = models.DecimalField(max_digits=20, decimal_places=4, default=0,
+                                   help_text="Actual cash available: invoice receipts - expenses - supplier payments.")
+    customer_outstanding     = models.DecimalField(max_digits=20, decimal_places=4, default=0,
+                                   help_text="Amount customers still owe us.")
+    total_invoices_cash      = models.DecimalField(max_digits=20, decimal_places=4, default=0,
+                                   help_text="Total cash ever collected from invoice payments (gross, never reduced).")
 
     # ---- Payables (to suppliers) ----
-    total_paid_payables        = models.DecimalField(max_digits=20, decimal_places=4, default=0)
-    supplier_payable_outstanding = models.DecimalField(max_digits=20, decimal_places=4, default=0)
-    # total_purchases_cash = total_paid_payables + supplier_payable_outstanding (computed)
+    total_paid_payables          = models.DecimalField(max_digits=20, decimal_places=4, default=0,
+                                       help_text="Total cash ever paid to suppliers.")
+    supplier_payable_outstanding = models.DecimalField(max_digits=20, decimal_places=4, default=0,
+                                       help_text="Amount we still owe suppliers.")
+    total_purchases_cash         = models.DecimalField(max_digits=20, decimal_places=4, default=0,
+                                       help_text="Total purchase value: paid + outstanding.")
 
     # ---- Expenses ----
     total_expenses_amount = models.DecimalField(max_digits=20, decimal_places=4, default=0)
@@ -124,14 +130,6 @@ class CashFlow(models.Model):
     class Meta:
         verbose_name        = "Cash Flow"
         verbose_name_plural = "Cash Flow"
-
-    @property
-    def total_invoices_cash(self):
-        return self.cash_in_hand + self.customer_outstanding
-
-    @property
-    def total_purchases_cash(self):
-        return self.total_paid_payables + self.supplier_payable_outstanding
 
     def __str__(self):
         return f"CashFlow — cash_in_hand: {self.cash_in_hand}"

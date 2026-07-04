@@ -6,6 +6,7 @@ from .permissions import IsAdminOrSuperuser
 from .selectors import (
     get_all_expense_categories,
     get_all_expenses,
+    get_cash_in_hand_breakdown,
     get_cashflow_stats,
     get_customer_outstanding_breakdown,
     get_expense_by_id,
@@ -194,14 +195,40 @@ class ExpenseRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
 # Breakdown views (drill-down from dashboard)
 # ---------------------------------------------------------------------------
 
-class CashInHandBreakdownView(generics.ListAPIView):
+class CashInHandBreakdownView(APIView):
     """
     GET /cash-flow/breakdown/cash-in-hand/
-    All invoice payments received (positive amounts only).
+    ALL cash movements affecting cash_in_hand (inflows AND outflows).
+
+    Filter params:
+        date_from     : YYYY-MM-DD
+        date_to       : YYYY-MM-DD
+        movement_type : inflow | outflow
+
+    Each entry shows direction (inflow/outflow), type, date,
+    description, reference, amount, method.
+    """
+    permission_classes = [IsAdminOrSuperuser]
+
+    def get(self, request):
+        p = request.query_params
+        movements = get_cash_in_hand_breakdown(
+            date_from     = p.get("date_from"),
+            date_to       = p.get("date_to"),
+            movement_type = p.get("movement_type"),
+        )
+        return Response(movements)
+
+
+class TotalInvoicesCashBreakdownView(generics.ListAPIView):
+    """
+    GET /cash-flow/breakdown/invoices-cash/
+    All invoice payments received from customers (gross collection).
+    This is the total_invoices_cash breakdown.
 
     Filter params:
         customer_name, customer_code, date_from, date_to,
-        min_amount, max_amount, method (cash/jazzcash/easypaisa/bank)
+        min_amount, max_amount, method
     """
     permission_classes = [IsAdminOrSuperuser]
     serializer_class   = InvoicePaymentBreakdownSerializer

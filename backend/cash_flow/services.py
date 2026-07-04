@@ -12,18 +12,29 @@ from .models import CashFlow, Expense, ExpenseCategory
 
 def _adjust_cashflow(
     *,
-    cash_in_hand_delta              : Decimal = Decimal("0"),
-    customer_outstanding_delta      : Decimal = Decimal("0"),
-    total_paid_payables_delta       : Decimal = Decimal("0"),
-    supplier_payable_outstanding_delta: Decimal = Decimal("0"),
-    total_expenses_amount_delta     : Decimal = Decimal("0"),
+    cash_in_hand_delta                 : Decimal = Decimal("0"),
+    customer_outstanding_delta         : Decimal = Decimal("0"),
+    total_invoices_cash_delta          : Decimal = Decimal("0"),
+    total_paid_payables_delta          : Decimal = Decimal("0"),
+    supplier_payable_outstanding_delta : Decimal = Decimal("0"),
+    total_purchases_cash_delta         : Decimal = Decimal("0"),
+    total_expenses_amount_delta        : Decimal = Decimal("0"),
     user,
 ) -> CashFlow:
     """
     Atomically adjusts the CashFlow singleton by the given deltas.
     Positive delta = increase. Negative delta = decrease.
-    All values floored at 0 — nothing goes negative.
+    Fields floored at 0 where appropriate.
     This is the ONLY function that writes to CashFlow.
+
+    Field semantics:
+        cash_in_hand            = actual cash available (invoice receipts - expenses - supplier payments)
+        customer_outstanding    = what customers still owe (increases on confirm, decreases on payment)
+        total_invoices_cash     = GROSS invoice receipts ever collected (only ever increases)
+        total_paid_payables     = total ever paid to suppliers (only ever increases)
+        supplier_payable_outstanding = what we still owe suppliers
+        total_purchases_cash    = total purchase value confirmed (paid + outstanding, only ever increases)
+        total_expenses_amount   = total expenses recorded
     """
     with transaction.atomic():
         cf = CashFlow.objects.select_for_update().get_or_create(pk=1)[0]
@@ -34,11 +45,19 @@ def _adjust_cashflow(
         cf.customer_outstanding = max(
             Decimal("0"), cf.customer_outstanding + customer_outstanding_delta
         )
+        # total_invoices_cash: gross receipts — floored at 0 but should only increase
+        cf.total_invoices_cash = max(
+            Decimal("0"), cf.total_invoices_cash + total_invoices_cash_delta
+        )
         cf.total_paid_payables = max(
             Decimal("0"), cf.total_paid_payables + total_paid_payables_delta
         )
         cf.supplier_payable_outstanding = max(
             Decimal("0"), cf.supplier_payable_outstanding + supplier_payable_outstanding_delta
+        )
+        # total_purchases_cash: total purchase value — floored at 0
+        cf.total_purchases_cash = max(
+            Decimal("0"), cf.total_purchases_cash + total_purchases_cash_delta
         )
         cf.total_expenses_amount = max(
             Decimal("0"), cf.total_expenses_amount + total_expenses_amount_delta
@@ -209,11 +228,14 @@ def sync_invoice_confirmed(*, grand_total: Decimal, user) -> None:
 def sync_invoice_payment_received(*, amount: Decimal, user) -> None:
     """
     Called when a customer payment is recorded.
-    Cash arrives → cash_in_hand increases, customer_outstanding decreases.
+    cash_in_hand increases (actual cash received).
+    customer_outstanding decreases (they paid us).
+    total_invoices_cash increases (gross collection tracker — never reversed).
     """
     _adjust_cashflow(
         cash_in_hand_delta         = +amount,
         customer_outstanding_delta = -amount,
+        total_invoices_cash_delta  = +amount,
         user=user,
     )
 
@@ -221,13 +243,14 @@ def sync_invoice_payment_received(*, amount: Decimal, user) -> None:
 def sync_invoice_payment_deleted(*, amount: Decimal, user) -> None:
     """
     Called when a customer payment is deleted.
-    Reverses the payment — cash goes back to outstanding.
+    Reverses all three fields that were updated on creation.
     Only for positive payments (not credit notes).
     """
     if amount > 0:
         _adjust_cashflow(
-            cash_in_hand_delta         = -amount,
-            customer_outstanding_delta = +amount,
+            cash_in_hand_delta        = -amount,
+            customer_outstanding_delta= +amount,
+            total_invoices_cash_delta = -amount,
             user=user,
         )
 
@@ -247,13 +270,14 @@ def sync_invoice_return_accepted(*, return_amount: Decimal, user) -> None:
 def sync_purchase_order_confirmed(*, net_payable: Decimal, advance_amount: Decimal, user) -> None:
     """
     Called when a purchase order is confirmed.
-    net_payable → supplier_payable_outstanding.
-    But if advance was already paid (on draft creation), subtract it from outstanding.
-    The advance was already deducted from cash_in_hand on draft creation.
+    total_purchases_cash increases by full net_payable (gross purchase value tracker).
+    supplier_payable_outstanding = net_payable - advance (advance already paid on draft).
+    total_paid_payables += advance (it was already paid from cash_in_hand on draft).
     """
     _adjust_cashflow(
         supplier_payable_outstanding_delta = +(net_payable - advance_amount),
         total_paid_payables_delta          = +advance_amount,
+        total_purchases_cash_delta         = +net_payable,
         user=user,
     )
 
@@ -261,7 +285,10 @@ def sync_purchase_order_confirmed(*, net_payable: Decimal, advance_amount: Decim
 def sync_supplier_payment_made(*, amount: Decimal, user) -> None:
     """
     Called when a supplier payment is recorded (non-advance, non-credit-note).
-    We pay supplier → cash_in_hand decreases, payable decreases, paid increases.
+    cash_in_hand decreases (we spent cash).
+    supplier_payable_outstanding decreases (we cleared some debt).
+    total_paid_payables increases (total ever paid tracker).
+    total_purchases_cash does NOT change — already recorded at PO confirmation.
     """
     _adjust_cashflow(
         cash_in_hand_delta                 = -amount,
@@ -274,7 +301,8 @@ def sync_supplier_payment_made(*, amount: Decimal, user) -> None:
 def sync_supplier_payment_deleted(*, amount: Decimal, user) -> None:
     """
     Called when a supplier payment record is deleted.
-    Reverses the payment.
+    Reverses all three fields updated on payment creation.
+    total_purchases_cash is not touched (PO is still confirmed).
     """
     if amount > 0:
         _adjust_cashflow(
