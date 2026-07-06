@@ -18,7 +18,6 @@ const RatesPage = () => {
 
     const { data, loading, filters, setFilters, create, update, refetch } = useRates();
     const [categories, setCategories] = useState([]);
-    const [shelves, setShelves] = useState([]);
 
     // Modal state
     const [showModal, setShowModal] = useState(false);
@@ -32,12 +31,10 @@ const RatesPage = () => {
 
     const loadLookups = async () => {
         try {
-            const [cats, shelves] = await Promise.all([
+            const [cats] = await Promise.all([
                 purchasesApi.categories.getAll(),
-                purchasesApi.shelves.getAll(),
             ]);
             setCategories(cats.filter(c => !c.is_deleted));
-            setShelves(shelves.filter(s => !s.is_deleted));
         } catch (error) {
             console.error('Failed to load lookups:', error);
         }
@@ -128,29 +125,6 @@ const RatesPage = () => {
                         ...categories.map(c => ({ value: c.id, label: c.name })),
                     ]}
                     className="w-48"
-                />
-                <Select
-                    value={filters.shelf || ''}
-                    onChange={(e) => handleFilterChange('shelf', e.target.value)}
-                    options={[
-                        { value: '', label: 'All Shelves' },
-                        ...shelves.map(s => ({ value: s.id, label: s.name })),
-                    ]}
-                    className="w-48"
-                />
-                <input
-                    type="number"
-                    placeholder="Min Price"
-                    value={filters.min_price || ''}
-                    onChange={(e) => handleFilterChange('min_price', e.target.value)}
-                    className="px-4 py-2.5 bg-white border border-neutral-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all w-32"
-                />
-                <input
-                    type="number"
-                    placeholder="Max Price"
-                    value={filters.max_price || ''}
-                    onChange={(e) => handleFilterChange('max_price', e.target.value)}
-                    className="px-4 py-2.5 bg-white border border-neutral-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all w-32"
                 />
                 {(Object.keys(filters).length > 0) && (
                     <button

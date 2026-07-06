@@ -34,7 +34,23 @@ export const useRates = (initialFilters = {}) => {
             ]);
 
             // Combine products with their rates
-            const combined = combineProductsWithRates(products || [], rates || []);
+            let combined = combineProductsWithRates(products || [], rates || []);
+
+            // Apply filters on the frontend
+            if (filters.search) {
+                const searchLower = filters.search.toLowerCase();
+                combined = combined.filter(item =>
+                    (item.product.name && item.product.name.toLowerCase().includes(searchLower)) ||
+                    (item.product.code && item.product.code.toLowerCase().includes(searchLower))
+                );
+            }
+            if (filters.category) {
+                combined = combined.filter(item => {
+                    const catId = item.product.category?.id || item.product.category;
+                    return String(catId) === String(filters.category);
+                });
+            }
+
             setData(combined);
         } catch (err) {
             setError(err.message || 'Failed to fetch rates');
