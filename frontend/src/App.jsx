@@ -15,6 +15,7 @@ import ProductsPage from './pages/purchases/ProductsPage';
 import PurchaseOrdersPage from './pages/purchases/PurchaseOrdersPage';
 import PaymentsPage from './pages/purchases/PaymentsPage';
 import ReturnsPage from './pages/purchases/ReturnsPage';
+import AllReturnsPage from './pages/purchases/AllReturnsPage'; // Add this import
 import SuppliersOutstandingPage from './pages/purchases/SuppliersOutstandingPage';
 import InventoryPage from './pages/purchases/InventoryPage';
 import GlobalPaymentsPage from './pages/purchases/GlobalPaymentsPage';
@@ -140,10 +141,11 @@ const AppContent = () => {
           </ProtectedRoute>
         } />
 
+        {/* Updated Returns Routes */}
         <Route path="/purchases/returns" element={
           <ProtectedRoute>
             <Layout>
-              <ReturnsPage />
+              <AllReturnsPage />
             </Layout>
           </ProtectedRoute>
         } />
@@ -168,6 +170,15 @@ const AppContent = () => {
           <ProtectedRoute>
             <Layout>
               <InventoryPage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        {/* Catch all route - redirect to dashboard */}
+        <Route path="*" element={
+          <ProtectedRoute>
+            <Layout>
+              <Navigate to="/dashboard" />
             </Layout>
           </ProtectedRoute>
         } />

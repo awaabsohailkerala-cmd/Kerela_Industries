@@ -11,39 +11,48 @@ import SearchBar from '../../components/ui/SearchBar';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
 import Card from '../../components/ui/Card';
-import { useParams, Link } from 'react-router-dom';
+import FilterBar from '../../components/ui/FilterBar';
+import { Link } from 'react-router-dom';
 
-const ReturnsPage = () => {
+const AllReturnsPage = () => {
     const { user } = useAuth();
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
-    const { orderId } = useParams();
 
     const [returns, setReturns] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [showCreateModal, setShowCreateModal] = useState(false);
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [selectedReturn, setSelectedReturn] = useState(null);
-    const [formData, setFormData] = useState({
-        items: [],
-        note: '',
-    });
-    const [orderItems, setOrderItems] = useState([]);
-    const [formLoading, setFormLoading] = useState(false);
     const [filters, setFilters] = useState({});
+    const [searchTerm, setSearchTerm] = useState('');
+    const [suppliers, setSuppliers] = useState([]);
+    const [showFilters, setShowFilters] = useState(false);
 
     useEffect(() => {
-        if (orderId && orderId !== 'undefined') {
-            fetchReturns();
-            fetchOrderItems();
-        }
-    }, [orderId, filters]);
+        loadSuppliers();
+    }, []);
 
-    const fetchReturns = async () => {
-        if (!orderId || orderId === 'undefined') return;
+    useEffect(() => {
+        fetchAllReturns();
+    }, [filters, searchTerm]);
+
+    const loadSuppliers = async () => {
+        try {
+            const data = await purchasesApi.suppliers.getAll();
+            setSuppliers(data || []);
+        } catch (error) {
+            console.error('Failed to load suppliers:', error);
+        }
+    };
+
+    const fetchAllReturns = async () => {
         setLoading(true);
         try {
-            const data = await purchasesApi.returns.getByOrder(orderId);
-            console.log('Order returns data:', data); // Debug log
+            const params = { ...filters };
+            if (searchTerm) {
+                params.order_number = searchTerm;
+            }
+            const data = await purchasesApi.returns.getAll(params);
+            console.log('Returns data:', data);
             setReturns(data || []);
         } catch (error) {
             console.error('Failed to fetch returns:', error);
@@ -53,34 +62,17 @@ const ReturnsPage = () => {
         }
     };
 
-    const fetchOrderItems = async () => {
-        try {
-            const order = await purchasesApi.orders.getById(orderId);
-            setOrderItems(order.items || []);
-        } catch (error) {
-            console.error('Failed to fetch order items:', error);
-        }
+    const handleApplyFilters = (filterValues) => {
+        setFilters(filterValues);
     };
 
-    const handleCreateReturn = async (e) => {
-        e.preventDefault();
-        setFormLoading(true);
-        try {
-            await purchasesApi.returns.create(orderId, {
-                items: formData.items.map(item => ({
-                    invoice_item_id: item.invoice_item_id,
-                    quantity: item.quantity,
-                })),
-                note: formData.note,
-            });
-            setShowCreateModal(false);
-            resetForm();
-            fetchReturns();
-        } catch (error) {
-            console.error('Failed to create return:', error);
-        } finally {
-            setFormLoading(false);
-        }
+    const handleResetFilters = () => {
+        setFilters({});
+        setSearchTerm('');
+    };
+
+    const handleSearch = (value) => {
+        setSearchTerm(value);
     };
 
     const handleAcceptReturn = async (returnId) => {
@@ -88,43 +80,10 @@ const ReturnsPage = () => {
 
         try {
             await purchasesApi.returns.accept(returnId);
-            fetchReturns();
+            fetchAllReturns();
         } catch (error) {
             console.error('Failed to accept return:', error);
         }
-    };
-
-    const resetForm = () => {
-        setFormData({
-            items: [],
-            note: '',
-        });
-    };
-
-    const handleAddReturnItem = () => {
-        setFormData(prev => ({
-            ...prev,
-            items: [
-                ...prev.items,
-                { invoice_item_id: '', quantity: 1 }
-            ]
-        }));
-    };
-
-    const handleUpdateReturnItem = (index, field, value) => {
-        setFormData(prev => ({
-            ...prev,
-            items: prev.items.map((item, i) =>
-                i === index ? { ...item, [field]: value } : item
-            )
-        }));
-    };
-
-    const handleRemoveReturnItem = (index) => {
-        setFormData(prev => ({
-            ...prev,
-            items: prev.items.filter((_, i) => i !== index)
-        }));
     };
 
     const getStatusBadge = (status) => {
@@ -185,6 +144,41 @@ const ReturnsPage = () => {
         },
     ];
 
+    // Filter configuration for the FilterBar
+    const filterConfig = [
+        {
+            name: 'status',
+            label: 'Status',
+            type: 'select',
+            options: [
+                { value: '', label: 'All Status' },
+                { value: 'pending', label: 'Pending' },
+                { value: 'accepted', label: 'Accepted' },
+            ],
+        },
+        {
+            name: 'supplier_name',
+            label: 'Supplier Name',
+            type: 'select',
+            options: [
+                { value: '', label: 'All Suppliers' },
+                ...suppliers.map(s => ({ value: s.name, label: s.name })),
+            ],
+        },
+        {
+            name: 'supplier_code',
+            label: 'Supplier Code',
+            type: 'select',
+            options: [
+                { value: '', label: 'All Supplier Codes' },
+                ...suppliers.map(s => ({ value: s.code, label: s.code })),
+            ],
+        },
+        { name: 'order_number', label: 'Order Number', type: 'text' },
+        { name: 'date_from', label: 'Date From', type: 'date' },
+        { name: 'date_to', label: 'Date To', type: 'date' },
+    ];
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[60vh]">
@@ -193,46 +187,51 @@ const ReturnsPage = () => {
         );
     }
 
-    if (!orderId || orderId === 'undefined') {
-        return (
-            <div className="text-center py-12">
-                <h2 className="text-2xl font-semibold text-neutral-900">Invalid Order</h2>
-                <p className="text-neutral-500 mt-2">Please go back to the orders list.</p>
-                <Link to="/purchases/orders" className="text-primary-600 hover:text-primary-700 mt-4 inline-block">
-                    ← Back to Orders
-                </Link>
-            </div>
-        );
-    }
-
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-neutral-900">Order Returns</h1>
-                    <p className="text-neutral-500 mt-1">
-                        Manage returns for Order #{orderId}
-                    </p>
-                    <div className="mt-2">
-                        <Link to="/purchases/returns" className="text-sm text-primary-600 hover:text-primary-700">
-                            View All Returns →
-                        </Link>
-                    </div>
+                    <h1 className="text-3xl font-bold text-neutral-900">All Returns</h1>
+                    <p className="text-neutral-500 mt-1">View all purchase returns across all orders</p>
                 </div>
-                {isAdmin && (
+                <Link to="/purchases/orders" className="text-sm text-primary-600 hover:text-primary-700">
+                    ← Back to Orders
+                </Link>
+            </div>
+
+            <div className="space-y-4">
+                <div className="flex gap-4">
+                    <div className="flex-1">
+                        <SearchBar
+                            onSearch={handleSearch}
+                            placeholder="Search by order number..."
+                            className="w-full"
+                        />
+                    </div>
                     <Button
-                        onClick={() => {
-                            resetForm();
-                            setShowCreateModal(true);
-                        }}
+                        variant="secondary"
+                        onClick={() => setShowFilters(!showFilters)}
                         icon={({ className }) => (
                             <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                             </svg>
                         )}
                     >
-                        Create Return
+                        {showFilters ? 'Hide Filters' : 'Show Filters'}
                     </Button>
+                    {(Object.keys(filters).length > 0 || searchTerm) && (
+                        <Button variant="secondary" onClick={handleResetFilters}>
+                            Clear All
+                        </Button>
+                    )}
+                </div>
+
+                {showFilters && (
+                    <FilterBar
+                        filters={filterConfig}
+                        onApply={handleApplyFilters}
+                        onReset={handleResetFilters}
+                    />
                 )}
             </div>
 
@@ -244,90 +243,6 @@ const ReturnsPage = () => {
                     setShowDetailModal(true);
                 }}
             />
-
-            {/* Create Return Modal */}
-            <Modal
-                isOpen={showCreateModal}
-                onClose={() => {
-                    setShowCreateModal(false);
-                    resetForm();
-                }}
-                title="Create Return"
-                size="lg"
-            >
-                <form onSubmit={handleCreateReturn} className="space-y-6 max-h-[70vh] overflow-y-auto">
-                    <div>
-                        <div className="flex items-center justify-between mb-3">
-                            <h3 className="font-semibold text-neutral-900">Items to Return</h3>
-                            <Button size="sm" onClick={handleAddReturnItem}>
-                                Add Item
-                            </Button>
-                        </div>
-
-                        <div className="space-y-2">
-                            {formData.items.length === 0 ? (
-                                <p className="text-center text-neutral-500 py-4">No items added yet</p>
-                            ) : (
-                                formData.items.map((item, index) => (
-                                    <div key={index} className="grid grid-cols-3 gap-2 p-3 bg-neutral-50 rounded-lg">
-                                        <Select
-                                            label="Product"
-                                            value={item.invoice_item_id}
-                                            onChange={(e) => handleUpdateReturnItem(index, 'invoice_item_id', parseInt(e.target.value))}
-                                            options={orderItems.map(i => ({
-                                                value: i.id,
-                                                label: `${i.product_name} (Returnable: ${i.returnable_quantity})`,
-                                            }))}
-                                            placeholder="Select item"
-                                            required
-                                        />
-                                        <Input
-                                            label="Quantity"
-                                            type="number"
-                                            value={item.quantity}
-                                            onChange={(e) => handleUpdateReturnItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                                            required
-                                        />
-                                        <div className="flex items-end">
-                                            <Button
-                                                size="sm"
-                                                variant="danger"
-                                                onClick={() => handleRemoveReturnItem(index)}
-                                                className="w-full"
-                                            >
-                                                Remove
-                                            </Button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-
-                    <Input
-                        label="Note"
-                        value={formData.note}
-                        onChange={(e) => setFormData({ ...formData, note: e.target.value })}
-                        placeholder="Return note (optional)"
-                    />
-
-                    <div className="flex justify-end gap-3 pt-4 border-t border-neutral-200">
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={() => {
-                                setShowCreateModal(false);
-                                resetForm();
-                            }}
-                        >
-                            Cancel
-                        </Button>
-                        <Button type="submit" loading={formLoading}>
-                            Create Return
-                        </Button>
-                    </div>
-                </form>
-            </Modal>
 
             {/* Return Detail Modal */}
             <Modal
@@ -363,6 +278,30 @@ const ReturnsPage = () => {
                                 <p className="font-medium text-primary-600">
                                     {typeof selectedReturn.total_return_amount === 'string'
                                         ? parseFloat(selectedReturn.total_return_amount).toFixed(2)
+                                        : '0.00'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-neutral-500">Total Return Gross (PKR)</p>
+                                <p className="font-medium">
+                                    {typeof selectedReturn.total_return_gross === 'string'
+                                        ? parseFloat(selectedReturn.total_return_gross).toFixed(2)
+                                        : '0.00'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-neutral-500">Total Return GST (PKR)</p>
+                                <p className="font-medium">
+                                    {typeof selectedReturn.total_return_gst === 'string'
+                                        ? parseFloat(selectedReturn.total_return_gst).toFixed(2)
+                                        : '0.00'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-neutral-500">Total Return WHT (PKR)</p>
+                                <p className="font-medium">
+                                    {typeof selectedReturn.total_return_wht === 'string'
+                                        ? parseFloat(selectedReturn.total_return_wht).toFixed(2)
                                         : '0.00'}
                                 </p>
                             </div>
@@ -417,6 +356,12 @@ const ReturnsPage = () => {
                                                 <p className="text-xs text-neutral-500">
                                                     Gross: {typeof item.gross_amount === 'string'
                                                         ? parseFloat(item.gross_amount).toFixed(2)
+                                                        : '0.00'} |
+                                                    GST: {typeof item.gst_amount === 'string'
+                                                        ? parseFloat(item.gst_amount).toFixed(2)
+                                                        : '0.00'} |
+                                                    WHT: {typeof item.wht_amount === 'string'
+                                                        ? parseFloat(item.wht_amount).toFixed(2)
                                                         : '0.00'}
                                                 </p>
                                             </div>
@@ -433,7 +378,7 @@ const ReturnsPage = () => {
                                     onClick={() => {
                                         handleAcceptReturn(selectedReturn.id);
                                         setShowDetailModal(false);
-                                        fetchReturns();
+                                        fetchAllReturns();
                                     }}
                                 >
                                     Accept Return
@@ -447,4 +392,4 @@ const ReturnsPage = () => {
     );
 };
 
-export default ReturnsPage;
+export default AllReturnsPage;

@@ -102,13 +102,26 @@ export const purchasesApi = {
     },
 
     // Returns
+    // Returns
     returns: {
         getAll: (params = {}) => {
             const query = new URLSearchParams(params).toString();
             return api.get(`/returns/${query ? `?${query}` : ''}`);
         },
         getByOrder: (orderId) => api.get(`/orders/${orderId}/returns/`),
-        create: (orderId, data) => api.post(`/orders/${orderId}/returns/`, data),
+        create: (orderId, data) => {
+            // The backend expects 'order_id' and items with 'purchase_item_id'
+            const payload = {
+                order_id: parseInt(orderId),  // Changed from invoice_id to order_id
+                items: data.items.map(item => ({
+                    purchase_item_id: parseInt(item.purchase_item_id),  // Changed from invoice_item_id
+                    quantity: parseInt(item.quantity) || 0,
+                })),
+                note: data.note || '',
+            };
+            console.log('Sending return payload:', payload); // Debug log
+            return api.post(`/orders/${orderId}/returns/`, payload);
+        },
         accept: (returnId) => api.post(`/returns/${returnId}/accept/`),
     },
 

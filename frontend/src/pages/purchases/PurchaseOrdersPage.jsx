@@ -15,7 +15,7 @@ import Card from '../../components/ui/Card';
 import FilterBar from '../../components/ui/FilterBar';
 import LineItemRow from '../../components/purchases/LineItemRow';
 import DraftPreview from '../../components/purchases/DraftPreview';
-import OrderActionButtons from '../../components/purchases/OrderActionButtons'; // Add this import
+import OrderDetailModal from '../../components/purchases/OrderDetailModal'; // Add this import
 import { useNavigate } from 'react-router-dom';
 
 const PurchaseOrdersPage = () => {
@@ -29,7 +29,6 @@ const PurchaseOrdersPage = () => {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [selectedOrder, setSelectedOrder] = useState(null);
-    const [orderLoading, setOrderLoading] = useState(false);
     const [filters, setFilters] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
     const [showFilters, setShowFilters] = useState(false);
@@ -47,7 +46,6 @@ const PurchaseOrdersPage = () => {
     const [showPdfModal, setShowPdfModal] = useState(false);
     const [pdfFileName, setPdfFileName] = useState('');
     const [pdfLoading, setPdfLoading] = useState(false);
-    const [pdfs, setPdfs] = useState([]);
 
     // Add Payment Modal
     const [showAddPaymentModal, setShowAddPaymentModal] = useState(false);
@@ -193,21 +191,9 @@ const PurchaseOrdersPage = () => {
         },
     ];
 
-    const handleViewOrder = async (order) => {
+    const handleViewOrder = (order) => {
         setSelectedOrder(order);
         setShowDetailModal(true);
-        setOrderLoading(true);
-        try {
-            const detail = await purchasesApi.orders.getById(order.id);
-            setSelectedOrder(detail);
-            if (detail.status === 'confirmed') {
-                fetchPDFs(detail.id);
-            }
-        } catch (error) {
-            console.error('Failed to load order details:', error);
-        } finally {
-            setOrderLoading(false);
-        }
     };
 
     const handleViewPaymentSummary = async (orderId) => {
@@ -225,17 +211,6 @@ const PurchaseOrdersPage = () => {
         setShowPaymentDetail(true);
     };
 
-    const handlePrintOrder = async (orderId) => {
-        try {
-            const response = await purchasesApi.orders.print(orderId, false);
-            const blob = new Blob([response], { type: 'application/pdf' });
-            const url = window.URL.createObjectURL(blob);
-            window.open(url, '_blank');
-        } catch (error) {
-            console.error('Failed to print order:', error);
-        }
-    };
-
     const handleSavePDF = async (orderId) => {
         setPdfLoading(true);
         try {
@@ -245,32 +220,11 @@ const PurchaseOrdersPage = () => {
             await purchasesApi.orders.savePDF(orderId, data);
             setShowPdfModal(false);
             setPdfFileName('');
-            fetchPDFs(orderId);
             alert('PDF saved successfully!');
         } catch (error) {
             console.error('Failed to save PDF:', error);
         } finally {
             setPdfLoading(false);
-        }
-    };
-
-    const fetchPDFs = async (orderId) => {
-        try {
-            const data = await purchasesApi.orders.getPDFs(orderId);
-            setPdfs(data || []);
-        } catch (error) {
-            console.error('Failed to fetch PDFs:', error);
-            setPdfs([]);
-        }
-    };
-
-    const handleDeletePDF = async (pdfId) => {
-        if (!window.confirm('Are you sure you want to delete this PDF?')) return;
-        try {
-            await purchasesApi.orders.deletePDF(pdfId);
-            fetchPDFs(selectedOrder?.id);
-        } catch (error) {
-            console.error('Failed to delete PDF:', error);
         }
     };
 
@@ -290,17 +244,11 @@ const PurchaseOrdersPage = () => {
                 note: paymentFormData.note || '',
             };
 
-            console.log('Sending payment data:', paymentData);
-
             await purchasesApi.payments.create(selectedOrder.id, paymentData);
             setShowAddPaymentModal(false);
             resetPaymentForm();
 
-            // Refresh order details to update payment status
-            const detail = await purchasesApi.orders.getById(selectedOrder.id);
-            setSelectedOrder(detail);
-
-            // Also refresh the orders list to update the table
+            // Refresh the orders list
             fetchOrders();
 
             alert('Payment recorded successfully!');
@@ -482,11 +430,6 @@ const PurchaseOrdersPage = () => {
         try {
             await purchasesApi.orders.confirm(orderId);
             fetchOrders();
-            if (selectedOrder) {
-                const detail = await purchasesApi.orders.getById(orderId);
-                setSelectedOrder(detail);
-                fetchPDFs(orderId);
-            }
         } catch (error) {
             console.error('Failed to confirm order:', error);
         }
@@ -734,225 +677,18 @@ const PurchaseOrdersPage = () => {
                 </form>
             </Modal>
 
-            {/* Order Detail Modal */}
-            <Modal
+            {/* Order Detail Modal - Using the new component */}
+            <OrderDetailModal
                 isOpen={showDetailModal}
                 onClose={() => {
                     setShowDetailModal(false);
                     setSelectedOrder(null);
-                    setPdfs([]);
                 }}
-                title="Order Details"
-                size="lg"
-            >
-                {orderLoading ? (
-                    <div className="flex items-center justify-center py-8">
-                        <LoadingSpinner />
-                    </div>
-                ) : selectedOrder && (
-                    <div className="space-y-6 max-h-[70vh] overflow-y-auto">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <p className="text-sm text-neutral-500">Order Number</p>
-                                <p className="font-medium">{selectedOrder.order_number}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Status</p>
-                                {getStatusBadge(selectedOrder.status)}
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Supplier</p>
-                                <p className="font-medium">{selectedOrder.supplier?.name || 'N/A'}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Payment Type</p>
-                                <p className="font-medium">{selectedOrder.payment_type || 'N/A'}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Gross Amount (PKR)</p>
-                                <p className="font-medium">
-                                    {typeof selectedOrder.gross_amount === 'string'
-                                        ? parseFloat(selectedOrder.gross_amount).toFixed(2)
-                                        : '0.00'}
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Net Payable (PKR)</p>
-                                <p className="font-medium text-primary-600">
-                                    {typeof selectedOrder.net_payable === 'string'
-                                        ? parseFloat(selectedOrder.net_payable).toFixed(2)
-                                        : '0.00'}
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Payment Status</p>
-                                {getPaymentStatusBadge(selectedOrder.payment_status)}
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Total Paid (PKR)</p>
-                                <p className="font-medium text-success-600">
-                                    {typeof selectedOrder.total_paid === 'string'
-                                        ? parseFloat(selectedOrder.total_paid).toFixed(2)
-                                        : '0.00'}
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Payable Outstanding (PKR)</p>
-                                <p className="font-medium text-error-600">
-                                    {typeof selectedOrder.payable_outstanding === 'string'
-                                        ? parseFloat(selectedOrder.payable_outstanding).toFixed(2)
-                                        : '0.00'}
-                                </p>
-                            </div>
-                            {selectedOrder.advance_amount && parseFloat(selectedOrder.advance_amount) > 0 && (
-                                <div>
-                                    <p className="text-sm text-neutral-500">Advance Amount (PKR)</p>
-                                    <p className="font-medium">
-                                        {typeof selectedOrder.advance_amount === 'string'
-                                            ? parseFloat(selectedOrder.advance_amount).toFixed(2)
-                                            : '0.00'}
-                                    </p>
-                                </div>
-                            )}
-                            {selectedOrder.gst_total && parseFloat(selectedOrder.gst_total) > 0 && (
-                                <div>
-                                    <p className="text-sm text-neutral-500">GST Total (PKR)</p>
-                                    <p className="font-medium">
-                                        {typeof selectedOrder.gst_total === 'string'
-                                            ? parseFloat(selectedOrder.gst_total).toFixed(2)
-                                            : '0.00'}
-                                    </p>
-                                </div>
-                            )}
-                            {selectedOrder.wht_total && parseFloat(selectedOrder.wht_total) > 0 && (
-                                <div>
-                                    <p className="text-sm text-neutral-500">WHT Total (PKR)</p>
-                                    <p className="font-medium">
-                                        {typeof selectedOrder.wht_total === 'string'
-                                            ? parseFloat(selectedOrder.wht_total).toFixed(2)
-                                            : '0.00'}
-                                    </p>
-                                </div>
-                            )}
-                            {selectedOrder.confirmed_at && (
-                                <div>
-                                    <p className="text-sm text-neutral-500">Confirmed</p>
-                                    <p className="font-medium">{new Date(selectedOrder.confirmed_at).toLocaleString()}</p>
-                                </div>
-                            )}
-                            {selectedOrder.description && (
-                                <div className="col-span-2">
-                                    <p className="text-sm text-neutral-500">Description</p>
-                                    <p className="font-medium">{selectedOrder.description}</p>
-                                </div>
-                            )}
-                        </div>
-
-                        {selectedOrder.items && selectedOrder.items.length > 0 && (
-                            <div>
-                                <h3 className="font-semibold text-neutral-900 mb-3">Items</h3>
-                                <div className="space-y-2">
-                                    {selectedOrder.items.map((item, index) => (
-                                        <div key={index} className="flex justify-between items-center p-3 bg-neutral-50 rounded-lg">
-                                            <div>
-                                                <p className="font-medium">{item.product_name}</p>
-                                                <p className="text-sm text-neutral-500">
-                                                    {item.quantity} × {typeof item.unit_price === 'string'
-                                                        ? parseFloat(item.unit_price).toFixed(2)
-                                                        : '0.00'}
-                                                </p>
-                                                <p className="text-xs text-neutral-400">
-                                                    Remaining: {item.remaining_quantity} | Returned: {item.returned_quantity}
-                                                </p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="font-medium">
-                                                    {typeof item.total_price === 'string'
-                                                        ? parseFloat(item.total_price).toFixed(2)
-                                                        : '0.00'}
-                                                </p>
-                                                <p className="text-xs text-neutral-500">
-                                                    GST: {typeof item.gst_amount === 'string'
-                                                        ? parseFloat(item.gst_amount).toFixed(2)
-                                                        : '0.00'} |
-                                                    WHT: {typeof item.wht_amount === 'string'
-                                                        ? parseFloat(item.wht_amount).toFixed(2)
-                                                        : '0.00'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Action Buttons - Using the new OrderActionButtons component */}
-                        {selectedOrder.status === 'confirmed' && (
-                            <div className="pt-4 border-t border-neutral-200">
-                                <OrderActionButtons
-                                    order={selectedOrder}
-                                    onPaymentAdded={() => {
-                                        // Refresh order details after payment
-                                        const refreshOrder = async () => {
-                                            const detail = await purchasesApi.orders.getById(selectedOrder.id);
-                                            setSelectedOrder(detail);
-                                            fetchOrders();
-                                        };
-                                        refreshOrder();
-                                    }}
-                                    onSavePDF={() => {
-                                        fetchPDFs(selectedOrder.id);
-                                    }}
-                                />
-                            </div>
-                        )}
-
-                        {/* Draft Order Actions */}
-                        {selectedOrder.status === 'draft' && isAdmin && (
-                            <div className="flex gap-3 pt-4 border-t border-neutral-200">
-                                <Button
-                                    variant="success"
-                                    onClick={() => handleConfirmOrder(selectedOrder.id)}
-                                >
-                                    Confirm Order
-                                </Button>
-                                <Button
-                                    variant="danger"
-                                    onClick={() => handleDeleteOrder(selectedOrder.id)}
-                                >
-                                    Delete Draft
-                                </Button>
-                            </div>
-                        )}
-
-                        {/* Saved PDFs Section */}
-                        {selectedOrder.status === 'confirmed' && pdfs.length > 0 && (
-                            <div>
-                                <h3 className="font-semibold text-neutral-900 mb-3">Saved PDFs</h3>
-                                <div className="space-y-2">
-                                    {pdfs.map((pdf) => (
-                                        <div key={pdf.id} className="flex justify-between items-center p-3 bg-neutral-50 rounded-lg">
-                                            <div>
-                                                <p className="font-medium">{pdf.file_name}</p>
-                                                <p className="text-xs text-neutral-500">
-                                                    Saved: {new Date(pdf.created_at).toLocaleString()}
-                                                </p>
-                                            </div>
-                                            <Button
-                                                size="sm"
-                                                variant="danger"
-                                                onClick={() => handleDeletePDF(pdf.id)}
-                                            >
-                                                Delete
-                                            </Button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </Modal>
+                orderId={selectedOrder?.id}
+                onOrderUpdated={() => {
+                    fetchOrders();
+                }}
+            />
 
             {/* Payment Summary Modal */}
             <Modal

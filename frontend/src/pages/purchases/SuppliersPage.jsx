@@ -12,6 +12,7 @@ import Badge from '../../components/ui/Badge';
 import Card from '../../components/ui/Card';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import OrderActionButtons from '../../components/purchases/OrderActionButtons';
+import OrderDetailModal from '../../components/purchases/OrderDetailModal'; // Add this import
 import { useAuth } from '../../context/AuthContext';
 
 const SuppliersPage = () => {
@@ -416,158 +417,16 @@ const SuppliersPage = () => {
                 )}
             </Modal>
 
-            {/* Order Detail Modal */}
-            <Modal
+            {/* Order Detail Modal - Using the new component */}
+            <OrderDetailModal
                 isOpen={showOrderDetail}
                 onClose={() => {
                     setShowOrderDetail(false);
                     setSelectedOrder(null);
                     setOrderWithDetails(null);
                 }}
-                title="Order Details"
-                size="lg"
-            >
-                {orderDetailLoading ? (
-                    <div className="flex items-center justify-center py-8">
-                        <LoadingSpinner />
-                    </div>
-                ) : orderWithDetails && (
-                    <div className="space-y-6 max-h-[70vh] overflow-y-auto">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <p className="text-sm text-neutral-500">Order Number</p>
-                                <p className="font-medium">{orderWithDetails.order_number}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Status</p>
-                                {getStatusBadge(orderWithDetails.status)}
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Supplier</p>
-                                <p className="font-medium">{orderWithDetails.supplier?.name || 'N/A'}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Payment Type</p>
-                                <p className="font-medium">{orderWithDetails.payment_type || 'N/A'}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Gross Amount (PKR)</p>
-                                <p className="font-medium">
-                                    {typeof orderWithDetails.gross_amount === 'string'
-                                        ? parseFloat(orderWithDetails.gross_amount).toFixed(2)
-                                        : '0.00'}
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Net Payable (PKR)</p>
-                                <p className="font-medium text-primary-600">
-                                    {typeof orderWithDetails.net_payable === 'string'
-                                        ? parseFloat(orderWithDetails.net_payable).toFixed(2)
-                                        : '0.00'}
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Payment Status</p>
-                                {getPaymentStatusBadge(orderWithDetails.payment_status)}
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Total Paid (PKR)</p>
-                                <p className="font-medium text-success-600">
-                                    {typeof orderWithDetails.total_paid === 'string'
-                                        ? parseFloat(orderWithDetails.total_paid).toFixed(2)
-                                        : '0.00'}
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-neutral-500">Payable Outstanding (PKR)</p>
-                                <p className="font-medium text-error-600">
-                                    {typeof orderWithDetails.payable_outstanding === 'string'
-                                        ? parseFloat(orderWithDetails.payable_outstanding).toFixed(2)
-                                        : '0.00'}
-                                </p>
-                            </div>
-                            {orderWithDetails.advance_amount && parseFloat(orderWithDetails.advance_amount) > 0 && (
-                                <div>
-                                    <p className="text-sm text-neutral-500">Advance Amount (PKR)</p>
-                                    <p className="font-medium">
-                                        {typeof orderWithDetails.advance_amount === 'string'
-                                            ? parseFloat(orderWithDetails.advance_amount).toFixed(2)
-                                            : '0.00'}
-                                    </p>
-                                </div>
-                            )}
-                            {orderWithDetails.confirmed_at && (
-                                <div>
-                                    <p className="text-sm text-neutral-500">Confirmed</p>
-                                    <p className="font-medium">{new Date(orderWithDetails.confirmed_at).toLocaleString()}</p>
-                                </div>
-                            )}
-                            {orderWithDetails.description && (
-                                <div className="col-span-2">
-                                    <p className="text-sm text-neutral-500">Description</p>
-                                    <p className="font-medium">{orderWithDetails.description}</p>
-                                </div>
-                            )}
-                        </div>
-
-                        {orderWithDetails.items && orderWithDetails.items.length > 0 && (
-                            <div>
-                                <h3 className="font-semibold text-neutral-900 mb-3">Items</h3>
-                                <div className="space-y-2">
-                                    {orderWithDetails.items.map((item, index) => (
-                                        <div key={index} className="flex justify-between items-center p-3 bg-neutral-50 rounded-lg">
-                                            <div>
-                                                <p className="font-medium">{item.product_name}</p>
-                                                <p className="text-sm text-neutral-500">
-                                                    {item.quantity} × {typeof item.unit_price === 'string'
-                                                        ? parseFloat(item.unit_price).toFixed(2)
-                                                        : '0.00'}
-                                                </p>
-                                                <p className="text-xs text-neutral-400">
-                                                    Remaining: {item.remaining_quantity} | Returned: {item.returned_quantity}
-                                                </p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="font-medium">
-                                                    {typeof item.total_price === 'string'
-                                                        ? parseFloat(item.total_price).toFixed(2)
-                                                        : '0.00'}
-                                                </p>
-                                                <p className="text-xs text-neutral-500">
-                                                    GST: {typeof item.gst_amount === 'string'
-                                                        ? parseFloat(item.gst_amount).toFixed(2)
-                                                        : '0.00'} |
-                                                    WHT: {typeof item.wht_amount === 'string'
-                                                        ? parseFloat(item.wht_amount).toFixed(2)
-                                                        : '0.00'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Order Action Buttons - Now using the reusable component */}
-                        {orderWithDetails.status === 'confirmed' && (
-                            <div className="pt-4 border-t border-neutral-200">
-                                <OrderActionButtons
-                                    order={orderWithDetails}
-                                    onPaymentAdded={handleRefreshOrder}
-                                    onSavePDF={handleRefreshOrder}
-                                />
-                            </div>
-                        )}
-                    </div>
-                )}
-            </Modal>
-
-            <ConfirmDialog
-                isOpen={!!deleteConfirm}
-                onClose={() => setDeleteConfirm(null)}
-                onConfirm={() => handleDelete(deleteConfirm?.id)}
-                title="Delete Supplier"
-                message={`Are you sure you want to delete "${deleteConfirm?.name}"? This action cannot be undone.`}
+                orderId={selectedOrder?.id}
+                onOrderUpdated={handleRefreshOrder}
             />
         </div>
     );
