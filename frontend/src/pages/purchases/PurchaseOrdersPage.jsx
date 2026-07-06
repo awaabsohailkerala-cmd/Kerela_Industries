@@ -30,6 +30,7 @@ const PurchaseOrdersPage = () => {
     const [filters, setFilters] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
     const [showFilters, setShowFilters] = useState(false);
+    const [error, setError] = useState('');
 
     // Form state
     const [formData, setFormData] = useState({
@@ -42,7 +43,6 @@ const PurchaseOrdersPage = () => {
     const [products, setProducts] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
     const [formLoading, setFormLoading] = useState(false);
-    const [previewData, setPreviewData] = useState(null);
 
     const tabs = [
         { value: 'all', label: 'All Orders' },
@@ -237,15 +237,56 @@ const PurchaseOrdersPage = () => {
 
     const handleSubmitOrder = async (e) => {
         e.preventDefault();
+        setError('');
         setFormLoading(true);
+
         try {
+            // Validate supplier
+            if (!formData.supplier) {
+                setError('Please select a supplier.');
+                setFormLoading(false);
+                return;
+            }
+
+            // Validate at least one item
+            if (formData.items.length === 0) {
+                setError('Please add at least one item to the order.');
+                setFormLoading(false);
+                return;
+            }
+
+            // Validate all items have product selected
+            const invalidItems = formData.items.some(item => !item.product);
+            if (invalidItems) {
+                setError('Please select a product for all items.');
+                setFormLoading(false);
+                return;
+            }
+
+            // Validate all items have quantity > 0
+            const invalidQuantity = formData.items.some(item => !item.quantity || item.quantity <= 0);
+            if (invalidQuantity) {
+                setError('Please enter a valid quantity for all items.');
+                setFormLoading(false);
+                return;
+            }
+
+            // Validate all items have unit_price > 0
+            const invalidPrice = formData.items.some(item => !item.unit_price || item.unit_price <= 0);
+            if (invalidPrice) {
+                setError('Please enter a valid unit price for all items.');
+                setFormLoading(false);
+                return;
+            }
+
+            // Format data to match backend expected fields
             const data = {
-                supplier: parseInt(formData.supplier),
+                supplier_id: parseInt(formData.supplier),  // Changed from supplier to supplier_id
                 payment_type: formData.payment_type,
                 advance_amount: formData.payment_type === 'advance' ? parseFloat(formData.advance_amount) || 0 : 0,
-                description: formData.description,
+                description: formData.description || '',
                 items: formData.items.map(item => ({
-                    product: parseInt(item.product),
+                    product_id: parseInt(item.product),  // Changed from product to product_id
                     quantity: parseInt(item.quantity) || 0,
                     unit_price: parseFloat(item.unit_price) || 0,
                     gst: parseFloat(item.gst) || 0,
@@ -254,13 +295,36 @@ const PurchaseOrdersPage = () => {
                 })),
             };
 
-            await purchasesApi.orders.create(data);
+            console.log('Submitting order:', data);
+
+            const result = await purchasesApi.orders.create(data);
+            console.log('Order created:', result);
+
             setShowCreateModal(false);
             resetForm();
             fetchOrders();
         } catch (error) {
             console.error('Failed to create order:', error);
-            alert(error.response?.data?.detail || 'Failed to create order');
+
+            // Parse error response
+            if (error.response?.data) {
+                const errorData = error.response.data;
+                if (typeof errorData === 'object') {
+                    const errorMessages = Object.entries(errorData)
+                        .map(([key, value]) => {
+                            if (key === 'items') {
+                                return `${key}: ${JSON.stringify(value)}`;
+                            }
+                            return `${key}: ${Array.isArray(value) ? value.join(', ') : value}`;
+                        })
+                        .join('\n');
+                    setError(`Validation Error:\n${errorMessages}`);
+                } else {
+                    setError(errorData || 'Failed to create order. Please check your input.');
+                }
+            } else {
+                setError(error.message || 'Failed to create order. Please try again.');
+            }
         } finally {
             setFormLoading(false);
         }
@@ -301,6 +365,7 @@ const PurchaseOrdersPage = () => {
             description: '',
             items: [],
         });
+        setError('');
     };
 
     const filterConfig = [
@@ -450,6 +515,7 @@ const PurchaseOrdersPage = () => {
                                     label="Advance Amount (PKR)"
                                     type="number"
                                     step="0.01"
+                                    min="0"
                                     value={formData.advance_amount}
                                     onChange={(e) => setFormData({ ...formData, advance_amount: e.target.value })}
                                     placeholder="Enter advance amount"
@@ -474,7 +540,7 @@ const PurchaseOrdersPage = () => {
                             </Button>
                         </div>
 
-                        <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                        <div className="space-y-3 max-h-[500px] overflow-y-auto">
                             {formData.items.length === 0 ? (
                                 <p className="text-center text-neutral-500 py-8">No items added yet. Click "Add Item" to start.</p>
                             ) : (
@@ -492,6 +558,12 @@ const PurchaseOrdersPage = () => {
                             )}
                         </div>
                     </div>
+
+                    {error && (
+                        <div className="p-4 bg-error-50 border border-error-200 rounded-lg">
+                            <p className="text-sm text-error-600 whitespace-pre-wrap">{error}</p>
+                        </div>
+                    )}
 
                     {formData.items.length > 0 && (
                         <DraftPreview {...calculatePreview()} />

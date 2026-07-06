@@ -34,8 +34,9 @@ const LineItemRow = ({
             exit={{ opacity: 0, x: 20 }}
             className="bg-white border border-neutral-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
         >
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                <div className="col-span-12 md:col-span-3">
+            {/* Row 1: Product and Quantity */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                <div className="col-span-1 md:col-span-3">
                     <Select
                         label="Product"
                         value={item.product}
@@ -46,10 +47,9 @@ const LineItemRow = ({
                         required
                     />
                 </div>
-
-                <div className="col-span-6 md:col-span-1">
+                <div className="col-span-1">
                     <Input
-                        label="Qty"
+                        label="Quantity"
                         type="number"
                         min="1"
                         value={item.quantity || ''}
@@ -58,8 +58,11 @@ const LineItemRow = ({
                         required
                     />
                 </div>
+            </div>
 
-                <div className="col-span-6 md:col-span-2">
+            {/* Row 2: Price, GST, WHT */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                <div>
                     <Input
                         label="Unit Price"
                         type="number"
@@ -71,8 +74,7 @@ const LineItemRow = ({
                         required
                     />
                 </div>
-
-                <div className="col-span-4 md:col-span-1">
+                <div>
                     <Input
                         label="GST %"
                         type="number"
@@ -84,8 +86,7 @@ const LineItemRow = ({
                         placeholder="0"
                     />
                 </div>
-
-                <div className="col-span-4 md:col-span-1">
+                <div>
                     <Input
                         label="WHT %"
                         type="number"
@@ -97,33 +98,33 @@ const LineItemRow = ({
                         placeholder="0"
                     />
                 </div>
+            </div>
 
-                <div className="col-span-4 md:col-span-2">
+            {/* Row 3: Description, Gross, Total, and Remove */}
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                <div className="col-span-1 md:col-span-2">
                     <Input
                         label="Description"
                         value={item.description || ''}
                         onChange={(e) => onUpdate(index, 'description', e.target.value)}
                         disabled={!canEdit}
-                        placeholder="Optional"
+                        placeholder="Optional description"
                     />
                 </div>
-
-                <div className="col-span-6 md:col-span-1">
-                    <div className="text-sm">
-                        <p className="text-neutral-500 text-xs">Gross</p>
+                <div className="col-span-1 flex items-end">
+                    <div className="w-full text-sm bg-neutral-50 p-2 rounded-lg">
+                        <p className="text-neutral-500 text-xs">Gross Amount</p>
                         <p className="font-medium text-neutral-700">{totals.gross.toFixed(2)}</p>
                     </div>
                 </div>
-
-                <div className="col-span-6 md:col-span-1">
-                    <div className="text-sm">
+                <div className="col-span-1 flex items-end">
+                    <div className="w-full text-sm bg-primary-50 p-2 rounded-lg">
                         <p className="text-neutral-500 text-xs">Total</p>
                         <p className="font-medium text-primary-600">{totals.total.toFixed(2)}</p>
                     </div>
                 </div>
-
-                {canEdit && (
-                    <div className="col-span-12 md:col-span-1">
+                <div className="col-span-1 flex items-end">
+                    {canEdit && (
                         <Button
                             size="sm"
                             variant="danger"
@@ -132,8 +133,8 @@ const LineItemRow = ({
                         >
                             Remove
                         </Button>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
         </motion.div>
     );
