@@ -7,6 +7,7 @@ import Select from '../../components/ui/Select';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
 import Card from '../../components/ui/Card';
+import Modal from '../../components/ui/Modal';
 
 const InventoryPage = () => {
     const [inventory, setInventory] = useState([]);
@@ -15,6 +16,12 @@ const InventoryPage = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [categories, setCategories] = useState([]);
     const [shelves, setShelves] = useState([]);
+
+    // Detail modal state
+    const [showDetailModal, setShowDetailModal] = useState(false);
+    const [selectedProduct, setSelectedProduct] = useState(null);
+    const [productDetail, setProductDetail] = useState(null);
+    const [detailLoading, setDetailLoading] = useState(false);
 
     useEffect(() => {
         loadLookups();
@@ -65,6 +72,25 @@ const InventoryPage = () => {
     const handleResetFilters = () => {
         setFilters({});
         setSearchTerm('');
+    };
+
+    const handleRowClick = async (row) => {
+        // Get the product ID from the row
+        const productId = row.product?.id;
+        if (!productId) return;
+
+        setSelectedProduct(row);
+        setShowDetailModal(true);
+        setDetailLoading(true);
+        try {
+            const detail = await purchasesApi.inventory.getByProduct(productId);
+            setProductDetail(detail);
+        } catch (error) {
+            console.error('Failed to fetch product details:', error);
+            setProductDetail(null);
+        } finally {
+            setDetailLoading(false);
+        }
     };
 
     // Calculate summary stats from the data
@@ -126,6 +152,7 @@ const InventoryPage = () => {
             <div>
                 <h1 className="text-3xl font-bold text-neutral-900">Inventory</h1>
                 <p className="text-neutral-500 mt-1">View current inventory levels across all products</p>
+                <p className="text-sm text-neutral-400 mt-1">Click on any row to view detailed product information</p>
             </div>
 
             {/* Summary Cards */}
@@ -187,6 +214,7 @@ const InventoryPage = () => {
             <Table
                 columns={columns}
                 data={inventory}
+                onRowClick={handleRowClick}
             />
 
             {inventory.length === 0 && !loading && (
@@ -198,6 +226,84 @@ const InventoryPage = () => {
                     </p>
                 </div>
             )}
+
+            {/* Inventory Detail Modal */}
+            <Modal
+                isOpen={showDetailModal}
+                onClose={() => {
+                    setShowDetailModal(false);
+                    setSelectedProduct(null);
+                    setProductDetail(null);
+                }}
+                title="Product Details"
+                size="lg"
+            >
+                {detailLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                        <LoadingSpinner size="lg" />
+                    </div>
+                ) : productDetail ? (
+                    <div className="space-y-6">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <p className="text-sm text-neutral-500">Product Name</p>
+                                <p className="font-medium">{productDetail.product?.name || 'N/A'}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-neutral-500">Product Code</p>
+                                <p className="font-medium">{productDetail.product?.code || 'N/A'}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-neutral-500">Category</p>
+                                <p className="font-medium">{productDetail.product?.category?.name || 'N/A'}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-neutral-500">Shelf</p>
+                                <p className="font-medium">{productDetail.product?.shelf?.name || 'N/A'}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-neutral-500">Current Quantity</p>
+                                <p className={`text-xl font-bold ${productDetail.quantity <= 0 ? 'text-error-600' :
+                                        productDetail.quantity <= 5 ? 'text-warning-600' : 'text-success-600'
+                                    }`}>
+                                    {productDetail.quantity || 0}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-neutral-500">Status</p>
+                                <Badge variant={
+                                    productDetail.quantity <= 0 ? 'error' :
+                                        productDetail.quantity <= 5 ? 'warning' : 'success'
+                                }>
+                                    {productDetail.quantity <= 0 ? 'Out of Stock' :
+                                        productDetail.quantity <= 5 ? 'Low Stock' : 'In Stock'}
+                                </Badge>
+                            </div>
+                            <div>
+                                <p className="text-sm text-neutral-500">Last Updated</p>
+                                <p className="font-medium">
+                                    {productDetail.last_updated_at ? new Date(productDetail.last_updated_at).toLocaleString() : 'N/A'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-neutral-500">Last Updated By</p>
+                                <p className="font-medium">{productDetail.last_updated_by || 'N/A'}</p>
+                            </div>
+                        </div>
+
+                        {productDetail.product?.description && (
+                            <div>
+                                <p className="text-sm text-neutral-500">Description</p>
+                                <p className="font-medium">{productDetail.product.description}</p>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="text-center py-8">
+                        <p className="text-neutral-500">No product details available</p>
+                    </div>
+                )}
+            </Modal>
         </div>
     );
 };
