@@ -11,20 +11,30 @@ from .models import ProductRate, ProductRateHistory
 # ProductRate selectors
 # ---------------------------------------------------------------------------
 
+def _clean(value):
+    """Returns None if value is None or empty/whitespace, else stripped string."""
+    if value is None:
+        return None
+    s = str(value).strip()
+    return s if s else None
+
+
 def get_all_rates(
     *,
-    search: str = None,
-    category_id: int = None,
-    shelf_id: int = None,
-    min_price: Decimal = None,
-    max_price: Decimal = None,
+    search      : str = None,
+    category_id : str = None,
+    shelf_id    : str = None,
+    min_price   : str = None,
+    max_price   : str = None,
 ) -> QuerySet:
     """
     Returns current active rates with optional filtering and searching.
 
-    Search  : product name, product code (case-insensitive, partial match)
-    Filters : category, shelf, selling price range
+    Search  : product name or product code (case-insensitive, partial match)
+    Filters : category id, shelf id, min/max selling price
     """
+    from django.db.models import Q
+
     qs = ProductRate.objects.select_related(
         "product",
         "product__category",
@@ -32,27 +42,22 @@ def get_all_rates(
         "updated_by",
         "created_by",
     ).filter(
-        product__is_deleted=False,   # hide rates for soft-deleted products
+        product__is_deleted=False,
     )
 
-    if search:
-        from django.db.models import Q
+    if _clean(search):
         qs = qs.filter(
-            Q(product__name__icontains=search) |
-            Q(product__code__icontains=search)
+            Q(product__name__icontains=_clean(search)) |
+            Q(product__code__icontains=_clean(search))
         )
-
-    if category_id is not None:
-        qs = qs.filter(product__category_id=category_id)
-
-    if shelf_id is not None:
-        qs = qs.filter(product__shelf_id=shelf_id)
-
-    if min_price is not None:
-        qs = qs.filter(selling_price__gte=min_price)
-
-    if max_price is not None:
-        qs = qs.filter(selling_price__lte=max_price)
+    if _clean(category_id):
+        qs = qs.filter(product__category_id=_clean(category_id))
+    if _clean(shelf_id):
+        qs = qs.filter(product__shelf_id=_clean(shelf_id))
+    if _clean(min_price):
+        qs = qs.filter(selling_price__gte=_clean(min_price))
+    if _clean(max_price):
+        qs = qs.filter(selling_price__lte=_clean(max_price))
 
     return qs
 
