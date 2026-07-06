@@ -15,6 +15,7 @@ import Card from '../../components/ui/Card';
 import FilterBar from '../../components/ui/FilterBar';
 import LineItemRow from '../../components/purchases/LineItemRow';
 import DraftPreview from '../../components/purchases/DraftPreview';
+import OrderActionButtons from '../../components/purchases/OrderActionButtons'; // Add this import
 import { useNavigate } from 'react-router-dom';
 
 const PurchaseOrdersPage = () => {
@@ -885,39 +886,24 @@ const PurchaseOrdersPage = () => {
                             </div>
                         )}
 
-                        {/* Action Buttons for Confirmed Orders */}
+                        {/* Action Buttons - Using the new OrderActionButtons component */}
                         {selectedOrder.status === 'confirmed' && (
-                            <div className="flex flex-wrap gap-3 pt-4 border-t border-neutral-200">
-                                <Button
-                                    variant="secondary"
-                                    onClick={() => handleViewPaymentSummary(selectedOrder.id)}
-                                >
-                                    View Payment Summary
-                                </Button>
-                                <Button
-                                    variant="secondary"
-                                    onClick={() => handlePrintOrder(selectedOrder.id)}
-                                >
-                                    Print Order
-                                </Button>
-                                <Button
-                                    variant="secondary"
-                                    onClick={() => {
-                                        setPdfFileName(selectedOrder.order_number);
-                                        setShowPdfModal(true);
+                            <div className="pt-4 border-t border-neutral-200">
+                                <OrderActionButtons
+                                    order={selectedOrder}
+                                    onPaymentAdded={() => {
+                                        // Refresh order details after payment
+                                        const refreshOrder = async () => {
+                                            const detail = await purchasesApi.orders.getById(selectedOrder.id);
+                                            setSelectedOrder(detail);
+                                            fetchOrders();
+                                        };
+                                        refreshOrder();
                                     }}
-                                >
-                                    Save PDF
-                                </Button>
-                                <Button
-                                    variant="primary"
-                                    onClick={() => {
-                                        resetPaymentForm();
-                                        setShowAddPaymentModal(true);
+                                    onSavePDF={() => {
+                                        fetchPDFs(selectedOrder.id);
                                     }}
-                                >
-                                    Add Payment
-                                </Button>
+                                />
                             </div>
                         )}
 

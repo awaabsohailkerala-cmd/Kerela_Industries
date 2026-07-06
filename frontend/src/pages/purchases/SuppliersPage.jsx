@@ -11,6 +11,7 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
 import Card from '../../components/ui/Card';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import OrderActionButtons from '../../components/purchases/OrderActionButtons';
 import { useAuth } from '../../context/AuthContext';
 
 const SuppliersPage = () => {
@@ -40,6 +41,8 @@ const SuppliersPage = () => {
     const [deleteConfirm, setDeleteConfirm] = useState(null);
     const [showOrderDetail, setShowOrderDetail] = useState(false);
     const [selectedOrder, setSelectedOrder] = useState(null);
+    const [orderDetailLoading, setOrderDetailLoading] = useState(false);
+    const [orderWithDetails, setOrderWithDetails] = useState(null);
 
     const filteredData = data.filter(item =>
         item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -131,9 +134,18 @@ const SuppliersPage = () => {
         }
     };
 
-    const handleViewOrderDetail = (order) => {
+    const handleViewOrderDetail = async (order) => {
         setSelectedOrder(order);
         setShowOrderDetail(true);
+        setOrderDetailLoading(true);
+        try {
+            const detail = await purchasesApi.orders.getById(order.id);
+            setOrderWithDetails(detail);
+        } catch (error) {
+            console.error('Failed to load order details:', error);
+        } finally {
+            setOrderDetailLoading(false);
+        }
     };
 
     const handleDelete = async (id) => {
@@ -172,6 +184,18 @@ const SuppliersPage = () => {
             paid: 'paid',
         };
         return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
+    };
+
+    const handleRefreshOrder = async () => {
+        if (selectedOrder) {
+            const detail = await purchasesApi.orders.getById(selectedOrder.id);
+            setOrderWithDetails(detail);
+            // Also refresh the outstanding orders list
+            if (selectedSupplier) {
+                const orders = await purchasesApi.suppliers.getOutstandingOrders(selectedSupplier.id);
+                setOutstandingOrders(orders || []);
+            }
+        }
     };
 
     if (loading) {
@@ -283,8 +307,6 @@ const SuppliersPage = () => {
                     setSelectedSupplier(null);
                     setOutstandingOrders([]);
                     setPayableSummary(null);
-                    setShowOrderDetail(false);
-                    setSelectedOrder(null);
                 }}
                 title="Supplier Details"
                 size="lg"
@@ -313,7 +335,7 @@ const SuppliersPage = () => {
                                         <Card className="p-4">
                                             <p className="text-sm text-neutral-500">Total Net Payable</p>
                                             <p className="text-xl font-bold text-neutral-900">
-                                                ${typeof payableSummary.total_net_payable === 'string'
+                                                {typeof payableSummary.total_net_payable === 'string'
                                                     ? parseFloat(payableSummary.total_net_payable).toFixed(2)
                                                     : '0.00'}
                                             </p>
@@ -321,7 +343,7 @@ const SuppliersPage = () => {
                                         <Card className="p-4">
                                             <p className="text-sm text-neutral-500">Total Paid</p>
                                             <p className="text-xl font-bold text-success-600">
-                                                ${typeof payableSummary.total_paid === 'string'
+                                                {typeof payableSummary.total_paid === 'string'
                                                     ? parseFloat(payableSummary.total_paid).toFixed(2)
                                                     : '0.00'}
                                             </p>
@@ -329,7 +351,7 @@ const SuppliersPage = () => {
                                         <Card className="p-4">
                                             <p className="text-sm text-neutral-500">Outstanding</p>
                                             <p className="text-xl font-bold text-error-600">
-                                                ${typeof payableSummary.total_payable_outstanding === 'string'
+                                                {typeof payableSummary.total_payable_outstanding === 'string'
                                                     ? parseFloat(payableSummary.total_payable_outstanding).toFixed(2)
                                                     : '0.00'}
                                             </p>
@@ -368,12 +390,12 @@ const SuppliersPage = () => {
                                                         </div>
                                                         <div className="text-right">
                                                             <p className="font-semibold text-error-600">
-                                                                ${typeof order.payable_outstanding === 'string'
+                                                                {typeof order.payable_outstanding === 'string'
                                                                     ? parseFloat(order.payable_outstanding).toFixed(2)
                                                                     : '0.00'}
                                                             </p>
                                                             <p className="text-sm text-neutral-500">
-                                                                Total: ${typeof order.net_payable === 'string'
+                                                                Total: {typeof order.net_payable === 'string'
                                                                     ? parseFloat(order.net_payable).toFixed(2)
                                                                     : '0.00'}
                                                             </p>
@@ -400,81 +422,104 @@ const SuppliersPage = () => {
                 onClose={() => {
                     setShowOrderDetail(false);
                     setSelectedOrder(null);
+                    setOrderWithDetails(null);
                 }}
                 title="Order Details"
                 size="lg"
             >
-                {selectedOrder && (
+                {orderDetailLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                        <LoadingSpinner />
+                    </div>
+                ) : orderWithDetails && (
                     <div className="space-y-6 max-h-[70vh] overflow-y-auto">
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <p className="text-sm text-neutral-500">Order Number</p>
-                                <p className="font-medium">{selectedOrder.order_number}</p>
+                                <p className="font-medium">{orderWithDetails.order_number}</p>
                             </div>
                             <div>
                                 <p className="text-sm text-neutral-500">Status</p>
-                                {getStatusBadge(selectedOrder.status)}
+                                {getStatusBadge(orderWithDetails.status)}
                             </div>
                             <div>
                                 <p className="text-sm text-neutral-500">Supplier</p>
-                                <p className="font-medium">{selectedOrder.supplier?.name}</p>
+                                <p className="font-medium">{orderWithDetails.supplier?.name || 'N/A'}</p>
                             </div>
                             <div>
                                 <p className="text-sm text-neutral-500">Payment Type</p>
-                                <p className="font-medium">{selectedOrder.payment_type}</p>
+                                <p className="font-medium">{orderWithDetails.payment_type || 'N/A'}</p>
                             </div>
                             <div>
-                                <p className="text-sm text-neutral-500">Net Payable</p>
+                                <p className="text-sm text-neutral-500">Gross Amount (PKR)</p>
+                                <p className="font-medium">
+                                    {typeof orderWithDetails.gross_amount === 'string'
+                                        ? parseFloat(orderWithDetails.gross_amount).toFixed(2)
+                                        : '0.00'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-neutral-500">Net Payable (PKR)</p>
                                 <p className="font-medium text-primary-600">
-                                    ${typeof selectedOrder.net_payable === 'string'
-                                        ? parseFloat(selectedOrder.net_payable).toFixed(2)
+                                    {typeof orderWithDetails.net_payable === 'string'
+                                        ? parseFloat(orderWithDetails.net_payable).toFixed(2)
                                         : '0.00'}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-sm text-neutral-500">Payment Status</p>
-                                {getPaymentStatusBadge(selectedOrder.payment_status)}
+                                {getPaymentStatusBadge(orderWithDetails.payment_status)}
                             </div>
                             <div>
-                                <p className="text-sm text-neutral-500">Total Paid</p>
-                                <p className="font-medium">
-                                    ${typeof selectedOrder.total_paid === 'string'
-                                        ? parseFloat(selectedOrder.total_paid).toFixed(2)
+                                <p className="text-sm text-neutral-500">Total Paid (PKR)</p>
+                                <p className="font-medium text-success-600">
+                                    {typeof orderWithDetails.total_paid === 'string'
+                                        ? parseFloat(orderWithDetails.total_paid).toFixed(2)
                                         : '0.00'}
                                 </p>
                             </div>
                             <div>
-                                <p className="text-sm text-neutral-500">Payable Outstanding</p>
+                                <p className="text-sm text-neutral-500">Payable Outstanding (PKR)</p>
                                 <p className="font-medium text-error-600">
-                                    ${typeof selectedOrder.payable_outstanding === 'string'
-                                        ? parseFloat(selectedOrder.payable_outstanding).toFixed(2)
+                                    {typeof orderWithDetails.payable_outstanding === 'string'
+                                        ? parseFloat(orderWithDetails.payable_outstanding).toFixed(2)
                                         : '0.00'}
                                 </p>
                             </div>
-                            {selectedOrder.confirmed_at && (
+                            {orderWithDetails.advance_amount && parseFloat(orderWithDetails.advance_amount) > 0 && (
                                 <div>
-                                    <p className="text-sm text-neutral-500">Confirmed</p>
-                                    <p className="font-medium">{new Date(selectedOrder.confirmed_at).toLocaleString()}</p>
+                                    <p className="text-sm text-neutral-500">Advance Amount (PKR)</p>
+                                    <p className="font-medium">
+                                        {typeof orderWithDetails.advance_amount === 'string'
+                                            ? parseFloat(orderWithDetails.advance_amount).toFixed(2)
+                                            : '0.00'}
+                                    </p>
                                 </div>
                             )}
-                            {selectedOrder.description && (
+                            {orderWithDetails.confirmed_at && (
+                                <div>
+                                    <p className="text-sm text-neutral-500">Confirmed</p>
+                                    <p className="font-medium">{new Date(orderWithDetails.confirmed_at).toLocaleString()}</p>
+                                </div>
+                            )}
+                            {orderWithDetails.description && (
                                 <div className="col-span-2">
                                     <p className="text-sm text-neutral-500">Description</p>
-                                    <p className="font-medium">{selectedOrder.description}</p>
+                                    <p className="font-medium">{orderWithDetails.description}</p>
                                 </div>
                             )}
                         </div>
 
-                        {selectedOrder.items && selectedOrder.items.length > 0 && (
+                        {orderWithDetails.items && orderWithDetails.items.length > 0 && (
                             <div>
                                 <h3 className="font-semibold text-neutral-900 mb-3">Items</h3>
                                 <div className="space-y-2">
-                                    {selectedOrder.items.map((item, index) => (
-                                        <div key={index} className="flex justify-between items-center p-2 bg-neutral-50 rounded-lg">
+                                    {orderWithDetails.items.map((item, index) => (
+                                        <div key={index} className="flex justify-between items-center p-3 bg-neutral-50 rounded-lg">
                                             <div>
                                                 <p className="font-medium">{item.product_name}</p>
                                                 <p className="text-sm text-neutral-500">
-                                                    {item.quantity} × ${typeof item.unit_price === 'string'
+                                                    {item.quantity} × {typeof item.unit_price === 'string'
                                                         ? parseFloat(item.unit_price).toFixed(2)
                                                         : '0.00'}
                                                 </p>
@@ -483,14 +528,16 @@ const SuppliersPage = () => {
                                                 </p>
                                             </div>
                                             <div className="text-right">
-                                                <p className="font-medium">${typeof item.total_price === 'string'
-                                                    ? parseFloat(item.total_price).toFixed(2)
-                                                    : '0.00'}</p>
+                                                <p className="font-medium">
+                                                    {typeof item.total_price === 'string'
+                                                        ? parseFloat(item.total_price).toFixed(2)
+                                                        : '0.00'}
+                                                </p>
                                                 <p className="text-xs text-neutral-500">
-                                                    GST: ${typeof item.gst_amount === 'string'
+                                                    GST: {typeof item.gst_amount === 'string'
                                                         ? parseFloat(item.gst_amount).toFixed(2)
                                                         : '0.00'} |
-                                                    WHT: ${typeof item.wht_amount === 'string'
+                                                    WHT: {typeof item.wht_amount === 'string'
                                                         ? parseFloat(item.wht_amount).toFixed(2)
                                                         : '0.00'}
                                                 </p>
@@ -498,6 +545,17 @@ const SuppliersPage = () => {
                                         </div>
                                     ))}
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Order Action Buttons - Now using the reusable component */}
+                        {orderWithDetails.status === 'confirmed' && (
+                            <div className="pt-4 border-t border-neutral-200">
+                                <OrderActionButtons
+                                    order={orderWithDetails}
+                                    onPaymentAdded={handleRefreshOrder}
+                                    onSavePDF={handleRefreshOrder}
+                                />
                             </div>
                         )}
                     </div>
