@@ -24,6 +24,16 @@ import GlobalPaymentsPage from './pages/purchases/GlobalPaymentsPage';
 import RatesPage from './pages/rates/RatesPage';
 import PriceHistoryPage from './pages/rates/PriceHistoryPage';
 
+// Billing pages
+import CustomersPage from './pages/billing/CustomersPage';
+import CustomerDetailPage from './pages/billing/CustomerDetailPage'; // Add this import
+import CustomerOutstandingPage from './pages/billing/CustomerOutstandingPage';
+import InvoicesPage from './pages/billing/InvoicesPage';
+import CreateInvoicePage from './pages/billing/CreateInvoicePage';
+import InvoiceDetailPage from './pages/billing/InvoiceDetailPage';
+import BillingPaymentsPage from "./pages/billing/PaymentsPage";
+import OutstandingInvoicesPage from './pages/billing/OutstandingInvoicesPage';
+
 import './App.css';
 
 const AppContent = () => {
@@ -32,6 +42,7 @@ const AppContent = () => {
   return (
     <AnimatePresence mode="wait">
       <Routes>
+        {/* Auth Routes */}
         <Route path="/login" element={
           isAuthenticated ? <Navigate to="/dashboard" /> : <Login />
         } />
@@ -44,6 +55,7 @@ const AppContent = () => {
           </ProtectedRoute>
         } />
 
+        {/* Dashboard */}
         <Route path="/dashboard" element={
           <ProtectedRoute>
             <Layout>
@@ -72,6 +84,7 @@ const AppContent = () => {
           </ProtectedRoute>
         } />
 
+        {/* User Management */}
         <Route path="/users" element={
           <ProtectedRoute>
             <Layout>
@@ -145,7 +158,6 @@ const AppContent = () => {
           </ProtectedRoute>
         } />
 
-        {/* Returns Routes */}
         <Route path="/purchases/returns" element={
           <ProtectedRoute>
             <Layout>
@@ -191,6 +203,79 @@ const AppContent = () => {
           <ProtectedRoute>
             <Layout>
               <PriceHistoryPage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        {/* Billing Routes */}
+        <Route path="/billing/customers" element={
+          <ProtectedRoute>
+            <Layout>
+              <CustomersPage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/billing/customers/:id" element={
+          <ProtectedRoute>
+            <Layout>
+              <CustomerDetailPage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/billing/customers/outstanding" element={
+          <ProtectedRoute>
+            <Layout>
+              <CustomerOutstandingPage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/billing/invoices" element={
+          <ProtectedRoute>
+            <Layout>
+              <InvoicesPage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/billing/invoices/create" element={
+          <ProtectedRoute>
+            <Layout>
+              <CreateInvoicePage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/billing/invoices/:id" element={
+          <ProtectedRoute>
+            <Layout>
+              <InvoiceDetailPage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/billing/invoices/:id/edit" element={
+          <ProtectedRoute>
+            <Layout>
+              <CreateInvoicePage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/billing/payments" element={
+          <ProtectedRoute>
+            <Layout>
+              <BillingPaymentsPage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/billing/invoices/outstanding" element={
+          <ProtectedRoute>
+            <Layout>
+              <OutstandingInvoicesPage />
             </Layout>
           </ProtectedRoute>
         } />

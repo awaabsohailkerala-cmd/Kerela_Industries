@@ -9,6 +9,7 @@ const Layout = ({ children }) => {
     const location = useLocation();
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [purchasesOpen, setPurchasesOpen] = useState(false);
+    const [billingOpen, setBillingOpen] = useState(false);
 
     // Check if any purchases sub-item is active
     const isPurchasesActive = () => {
@@ -23,6 +24,17 @@ const Layout = ({ children }) => {
             '/purchases/suppliers/outstanding',
         ];
         return purchasesPaths.some(path => location.pathname.startsWith(path));
+    };
+
+    // Check if any billing sub-item is active
+    const isBillingActive = () => {
+        const billingPaths = [
+            '/billing/customers',
+            '/billing/invoices',
+            '/billing/payments',
+            '/billing/invoices/outstanding',
+        ];
+        return billingPaths.some(path => location.pathname.startsWith(path));
     };
 
     const mainNavigation = [
@@ -44,8 +56,16 @@ const Layout = ({ children }) => {
         { name: 'Outstanding', path: '/purchases/suppliers/outstanding', icon: '📊' },
     ];
 
+    const billingNavigation = [
+        { name: 'Customers', path: '/billing/customers', icon: '👤' },
+        { name: 'Invoices', path: '/billing/invoices', icon: '📄' },
+        { name: 'Payments', path: '/billing/payments', icon: '💰' },
+        { name: 'Outstanding', path: '/billing/invoices/outstanding', icon: '📊' },
+    ];
+
     const isActive = (path) => location.pathname === path;
     const isPurchasesActiveNow = isPurchasesActive();
+    const isBillingActiveNow = isBillingActive();
 
     return (
         <div className="min-h-screen bg-neutral-50">
@@ -102,7 +122,6 @@ const Layout = ({ children }) => {
 
                         {/* Purchases Section */}
                         <div className="mt-2 pt-2 border-t border-neutral-200">
-                            {/* Purchases Toggle */}
                             <button
                                 onClick={() => setPurchasesOpen(!purchasesOpen)}
                                 className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isPurchasesActiveNow
@@ -158,6 +177,79 @@ const Layout = ({ children }) => {
                             {!sidebarOpen && (
                                 <div className="mt-1 space-y-1">
                                     {purchasesNavigation.map((item) => (
+                                        <Link
+                                            key={item.path}
+                                            to={item.path}
+                                            className={`flex items-center justify-center px-4 py-3 rounded-xl transition-all duration-200 ${isActive(item.path)
+                                                    ? 'bg-primary-50 text-primary-700'
+                                                    : 'text-neutral-600 hover:bg-neutral-100'
+                                                }`}
+                                            title={item.name}
+                                        >
+                                            <span className="text-xl">{item.icon}</span>
+                                        </Link>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Billing Section */}
+                        <div className="mt-2 pt-2 border-t border-neutral-200">
+                            <button
+                                onClick={() => setBillingOpen(!billingOpen)}
+                                className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isBillingActiveNow
+                                        ? 'bg-primary-50 text-primary-700'
+                                        : 'text-neutral-600 hover:bg-neutral-100'
+                                    }`}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <span className="text-xl">🧾</span>
+                                    {sidebarOpen && (
+                                        <span className="font-medium">Billing</span>
+                                    )}
+                                </div>
+                                {sidebarOpen && (
+                                    <motion.span
+                                        animate={{ rotate: billingOpen ? 180 : 0 }}
+                                        transition={{ duration: 0.2 }}
+                                        className="text-sm"
+                                    >
+                                        ▼
+                                    </motion.span>
+                                )}
+                            </button>
+
+                            {/* Billing Sub-items */}
+                            <AnimatePresence>
+                                {billingOpen && sidebarOpen && (
+                                    <motion.div
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        transition={{ duration: 0.2 }}
+                                        className="ml-4 space-y-1 overflow-hidden"
+                                    >
+                                        {billingNavigation.map((item) => (
+                                            <Link
+                                                key={item.path}
+                                                to={item.path}
+                                                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-sm ${isActive(item.path)
+                                                        ? 'bg-primary-50 text-primary-700'
+                                                        : 'text-neutral-600 hover:bg-neutral-100'
+                                                    }`}
+                                            >
+                                                <span className="text-base">{item.icon}</span>
+                                                <span className="font-medium">{item.name}</span>
+                                            </Link>
+                                        ))}
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+
+                            {/* When sidebar is collapsed, show billing as icons */}
+                            {!sidebarOpen && (
+                                <div className="mt-1 space-y-1">
+                                    {billingNavigation.map((item) => (
                                         <Link
                                             key={item.path}
                                             to={item.path}
