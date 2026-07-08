@@ -13,6 +13,7 @@ from .selectors import (
     get_payments_for_invoice,
     get_return_by_id,
     get_returns_for_invoice,
+    get_all_returns,
 )
 from .serializers import (
     CustomerReadSerializer,
@@ -283,6 +284,34 @@ class ReturnAcceptView(generics.UpdateAPIView):
     def post(self, request, *args, **kwargs):
         return_record = accept_return(return_id=self.kwargs["pk"], user=request.user)
         return Response(ReturnReadSerializer(return_record).data, status=status.HTTP_200_OK)
+
+
+class AllReturnsView(generics.ListAPIView):
+    """
+    GET /billing/returns/
+    Search all returns across all invoices.
+
+    Query params:
+        reference     : Return reference number (partial match)
+        bill_number   : Invoice bill number (partial match)
+        customer_name : Customer name (partial match)
+        status        : pending | accepted
+        date_from     : YYYY-MM-DD
+        date_to       : YYYY-MM-DD
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class   = ReturnReadSerializer
+
+    def get_queryset(self):
+        p = self.request.query_params
+        return get_all_returns(
+            reference     = p.get("reference"),
+            bill_number   = p.get("bill_number"),
+            customer_name = p.get("customer_name"),
+            status        = p.get("status"),
+            date_from     = p.get("date_from"),
+            date_to       = p.get("date_to"),
+        )
 
 
 # ---------------------------------------------------------------------------

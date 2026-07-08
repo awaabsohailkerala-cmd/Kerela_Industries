@@ -60,7 +60,9 @@ const Layout = ({ children }) => {
         { name: 'Customers', path: '/billing/customers', icon: '👤' },
         { name: 'Invoices', path: '/billing/invoices', icon: '📄' },
         { name: 'Payments', path: '/billing/payments', icon: '💰' },
-        { name: 'Outstanding', path: '/billing/invoices/outstanding', icon: '📊' },
+        { name: 'Returns', path: '/billing/returns', icon: '↩️' },
+        { name: 'Invoices Outstanding', path: '/billing/invoices/outstanding', icon: '📊' },
+        { name: 'Customer Outstanding', path: '/billing/customers/outstanding', icon: '📈' },
     ];
 
     const isActive = (path) => location.pathname === path;
@@ -103,8 +105,8 @@ const Layout = ({ children }) => {
                                 key={item.path}
                                 to={item.path}
                                 className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isActive(item.path)
-                                        ? 'bg-primary-50 text-primary-700'
-                                        : 'text-neutral-600 hover:bg-neutral-100'
+                                    ? 'bg-primary-50 text-primary-700'
+                                    : 'text-neutral-600 hover:bg-neutral-100'
                                     }`}
                             >
                                 <span className="text-xl">{item.icon}</span>
@@ -125,8 +127,8 @@ const Layout = ({ children }) => {
                             <button
                                 onClick={() => setPurchasesOpen(!purchasesOpen)}
                                 className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isPurchasesActiveNow
-                                        ? 'bg-primary-50 text-primary-700'
-                                        : 'text-neutral-600 hover:bg-neutral-100'
+                                    ? 'bg-primary-50 text-primary-700'
+                                    : 'text-neutral-600 hover:bg-neutral-100'
                                     }`}
                             >
                                 <div className="flex items-center gap-3">
@@ -161,8 +163,8 @@ const Layout = ({ children }) => {
                                                 key={item.path}
                                                 to={item.path}
                                                 className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-sm ${isActive(item.path)
-                                                        ? 'bg-primary-50 text-primary-700'
-                                                        : 'text-neutral-600 hover:bg-neutral-100'
+                                                    ? 'bg-primary-50 text-primary-700'
+                                                    : 'text-neutral-600 hover:bg-neutral-100'
                                                     }`}
                                             >
                                                 <span className="text-base">{item.icon}</span>
@@ -181,8 +183,8 @@ const Layout = ({ children }) => {
                                             key={item.path}
                                             to={item.path}
                                             className={`flex items-center justify-center px-4 py-3 rounded-xl transition-all duration-200 ${isActive(item.path)
-                                                    ? 'bg-primary-50 text-primary-700'
-                                                    : 'text-neutral-600 hover:bg-neutral-100'
+                                                ? 'bg-primary-50 text-primary-700'
+                                                : 'text-neutral-600 hover:bg-neutral-100'
                                                 }`}
                                             title={item.name}
                                         >
@@ -198,8 +200,8 @@ const Layout = ({ children }) => {
                             <button
                                 onClick={() => setBillingOpen(!billingOpen)}
                                 className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isBillingActiveNow
-                                        ? 'bg-primary-50 text-primary-700'
-                                        : 'text-neutral-600 hover:bg-neutral-100'
+                                    ? 'bg-primary-50 text-primary-700'
+                                    : 'text-neutral-600 hover:bg-neutral-100'
                                     }`}
                             >
                                 <div className="flex items-center gap-3">
@@ -234,8 +236,8 @@ const Layout = ({ children }) => {
                                                 key={item.path}
                                                 to={item.path}
                                                 className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-sm ${isActive(item.path)
-                                                        ? 'bg-primary-50 text-primary-700'
-                                                        : 'text-neutral-600 hover:bg-neutral-100'
+                                                    ? 'bg-primary-50 text-primary-700'
+                                                    : 'text-neutral-600 hover:bg-neutral-100'
                                                     }`}
                                             >
                                                 <span className="text-base">{item.icon}</span>
@@ -254,8 +256,8 @@ const Layout = ({ children }) => {
                                             key={item.path}
                                             to={item.path}
                                             className={`flex items-center justify-center px-4 py-3 rounded-xl transition-all duration-200 ${isActive(item.path)
-                                                    ? 'bg-primary-50 text-primary-700'
-                                                    : 'text-neutral-600 hover:bg-neutral-100'
+                                                ? 'bg-primary-50 text-primary-700'
+                                                : 'text-neutral-600 hover:bg-neutral-100'
                                                 }`}
                                             title={item.name}
                                         >

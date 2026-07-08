@@ -21,6 +21,7 @@ from .views import (
     PaymentListCreateView,
     ReturnAcceptView,
     ReturnListCreateView,
+    AllReturnsView,
     SavedPDFDeleteView,
 )
 
@@ -42,6 +43,7 @@ urlpatterns = [
 
     # Returns (nested under invoice + standalone accept)
     path("invoices/<int:invoice_id>/returns/", ReturnListCreateView.as_view(), name="return-list-create"),
+    path("returns/", AllReturnsView.as_view(), name="return-list-all"),
     path("returns/<int:pk>/accept/", ReturnAcceptView.as_view(), name="return-accept"),
 
     # Payment summaries

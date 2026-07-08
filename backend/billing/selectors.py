@@ -130,6 +130,38 @@ def get_returns_for_invoice(invoice_id: int) -> QuerySet:
     )
 
 
+def get_all_returns(
+    *,
+    reference: str = None,
+    bill_number: str = None,
+    customer_name: str = None,
+    status: str = None,
+    date_from: str = None,
+    date_to: str = None,
+) -> QuerySet:
+    """Search all returns across all invoices with full filter support."""
+    qs = Return.objects.filter(
+        is_deleted=False,
+    ).select_related("invoice__customer", "created_by", "accepted_by").prefetch_related(
+        "items__invoice_item__product",
+    ).order_by("-created_at")
+
+    if _clean(reference):
+        qs = qs.filter(reference_number__icontains=_clean(reference))
+    if _clean(bill_number):
+        qs = qs.filter(invoice__bill_number__icontains=_clean(bill_number))
+    if _clean(customer_name):
+        qs = qs.filter(invoice__customer__name__icontains=_clean(customer_name))
+    if _clean(status):
+        qs = qs.filter(status=_clean(status))
+    if _clean(date_from):
+        qs = qs.filter(created_at__date__gte=_clean(date_from))
+    if _clean(date_to):
+        qs = qs.filter(created_at__date__lte=_clean(date_to))
+        
+    return qs
+
+
 def get_return_by_id(pk: int) -> Return:
     return get_object_or_404(
         Return.objects.select_related(
