@@ -152,8 +152,11 @@ const EditInvoicePage = () => {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold text-neutral-900">Edit Invoice</h1>
-                    <p className="text-neutral-500 mt-1">{invoice.bill_number}</p>
+                    <Link to={`/billing/invoices/${id}`} className="text-sm text-primary-600 hover:text-primary-700">
+                        ← Back to Invoice
+                    </Link>
+                    <h1 className="text-3xl font-bold text-neutral-900 mt-1">Edit Invoice</h1>
+                    <p className="text-neutral-500">{invoice.bill_number}</p>
                 </div>
                 <div className="flex gap-3">
                     <Button variant="secondary" onClick={handleCancel}>
@@ -176,7 +179,7 @@ const EditInvoicePage = () => {
                                 { value: '', label: 'Select customer' },
                                 ...customers.map(c => ({ value: c.id, label: `${c.code} - ${c.name}` })),
                             ]}
-                            disabled={true} // Customer cannot be changed on edit
+                            disabled={true}
                             required
                         />
                     </div>
@@ -190,7 +193,7 @@ const EditInvoicePage = () => {
                         </Button>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="space-y-3 max-h-[500px] overflow-y-auto">
                         {formData.items.length === 0 ? (
                             <p className="text-center text-neutral-500 py-8">No items added yet. Click "Add Item" to start.</p>
                         ) : (

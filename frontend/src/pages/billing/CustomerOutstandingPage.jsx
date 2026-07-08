@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
-import { useBillingCRUD } from '../../hooks/useBilling';
 import { billingApi } from '../../services/billingApi';
 import Table from '../../components/ui/Table';
 import SearchBar from '../../components/ui/SearchBar';
@@ -14,31 +13,50 @@ const CustomerOutstandingPage = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
 
-    const { data, loading, filters, setFilters, resetFilters, refetch } = useBillingCRUD(
-        billingApi.customers,
-        { search: '' }
-    );
-
+    const [customers, setCustomers] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [filters, setFilters] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
-    const [paymentStatus, setPaymentStatus] = useState('');
-    const [minOutstanding, setMinOutstanding] = useState('');
-    const [maxOutstanding, setMaxOutstanding] = useState('');
+
+    const fetchCustomers = useCallback(async () => {
+        setLoading(true);
+        try {
+            const params = { ...filters };
+            if (searchTerm) {
+                params.search = searchTerm;
+            }
+            const data = await billingApi.customers.getOutstanding(params);
+            setCustomers(data || []);
+        } catch (error) {
+            console.error('Failed to fetch customers with outstanding:', error);
+            setCustomers([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [filters, searchTerm]);
+
+    useEffect(() => {
+        fetchCustomers();
+    }, [fetchCustomers]);
+
+    const handleSearch = (value) => {
+        setSearchTerm(value);
+    };
+
+    const handleFilterChange = (key, value) => {
+        setFilters(prev => ({ ...prev, [key]: value }));
+    };
 
     const handleApplyFilters = () => {
-        const newFilters = {};
-        if (searchTerm) newFilters.search = searchTerm;
-        if (paymentStatus) newFilters.payment_status = paymentStatus;
-        if (minOutstanding) newFilters.min_outstanding = minOutstanding;
-        if (maxOutstanding) newFilters.max_outstanding = maxOutstanding;
-        setFilters(newFilters);
+        fetchCustomers();
     };
 
     const handleResetFilters = () => {
+        setFilters({});
         setSearchTerm('');
-        setPaymentStatus('');
-        setMinOutstanding('');
-        setMaxOutstanding('');
-        resetFilters();
+        setTimeout(() => {
+            fetchCustomers();
+        }, 0);
     };
 
     const columns = [
@@ -47,11 +65,10 @@ const CustomerOutstandingPage = () => {
         {
             key: 'outstanding',
             label: 'Outstanding (PKR)',
-            render: (value) => (
-                <span className="font-semibold text-error-600">
-                    {typeof value === 'string' ? parseFloat(value).toFixed(2) : '0.00'}
-                </span>
-            )
+            render: (value) => {
+                const num = typeof value === 'string' ? parseFloat(value) : value;
+                return isNaN(num) ? '0.00' : num.toFixed(2);
+            }
         },
         {
             key: 'payment_status',
@@ -77,37 +94,39 @@ const CustomerOutstandingPage = () => {
             <div>
                 <h1 className="text-3xl font-bold text-neutral-900">Customers Outstanding</h1>
                 <p className="text-neutral-500 mt-1">View customers with outstanding balances</p>
+                <p className="text-sm text-neutral-400 mt-1">
+                    {customers.length} customer{customers.length !== 1 ? 's' : ''} with outstanding balance
+                </p>
             </div>
 
             <div className="flex flex-wrap gap-4">
                 <SearchBar
-                    onSearch={setSearchTerm}
+                    onSearch={handleSearch}
                     placeholder="Search by name or code..."
                     className="flex-1 min-w-[200px]"
                     value={searchTerm}
                 />
                 <select
-                    value={paymentStatus}
-                    onChange={(e) => setPaymentStatus(e.target.value)}
+                    value={filters.payment_status || ''}
+                    onChange={(e) => handleFilterChange('payment_status', e.target.value)}
                     className="px-4 py-2.5 bg-white border border-neutral-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all"
                 >
                     <option value="">All Status</option>
                     <option value="unpaid">Unpaid</option>
                     <option value="partial">Partial</option>
-                    <option value="paid">Paid</option>
                 </select>
                 <input
                     type="number"
                     placeholder="Min Outstanding"
-                    value={minOutstanding}
-                    onChange={(e) => setMinOutstanding(e.target.value)}
+                    value={filters.min_outstanding || ''}
+                    onChange={(e) => handleFilterChange('min_outstanding', e.target.value)}
                     className="px-4 py-2.5 bg-white border border-neutral-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all w-40"
                 />
                 <input
                     type="number"
                     placeholder="Max Outstanding"
-                    value={maxOutstanding}
-                    onChange={(e) => setMaxOutstanding(e.target.value)}
+                    value={filters.max_outstanding || ''}
+                    onChange={(e) => handleFilterChange('max_outstanding', e.target.value)}
                     className="px-4 py-2.5 bg-white border border-neutral-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all w-40"
                 />
                 <Button onClick={handleApplyFilters}>
@@ -118,11 +137,21 @@ const CustomerOutstandingPage = () => {
                 </Button>
             </div>
 
-            <Table
-                columns={columns}
-                data={data}
-                onRowClick={(customer) => navigate(`/billing/customers/${customer.id}`)}
-            />
+            {customers.length === 0 ? (
+                <div className="text-center py-12">
+                    <div className="text-6xl mb-4">✅</div>
+                    <h3 className="text-lg font-semibold text-neutral-900">No Customers with Outstanding</h3>
+                    <p className="text-sm text-neutral-500 mt-1">
+                        All customers have settled their balances.
+                    </p>
+                </div>
+            ) : (
+                <Table
+                    columns={columns}
+                    data={customers}
+                    onRowClick={(customer) => navigate(`/billing/customers/${customer.id}`)}
+                />
+            )}
         </div>
     );
 };
