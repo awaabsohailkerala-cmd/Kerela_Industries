@@ -1,23 +1,65 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useSuppliersOutstanding } from '../../hooks/usePurchases';
 import { purchasesApi } from '../../services/purchasesApi';
 import Table from '../../components/ui/Table';
 import SearchBar from '../../components/ui/SearchBar';
+import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
 import Card from '../../components/ui/Card';
 import Modal from '../../components/ui/Modal';
-import OrderDetailModal from '../../components/purchases/OrderDetailModal';
+import FilterBar from '../../components/ui/FilterBar';
 
 const SuppliersOutstandingPage = () => {
-    const { data, loading, filters, setFilters, refetch } = useSuppliersOutstanding();
+    const navigate = useNavigate();
+    const { data, loading, filters, setFilters } = useSuppliersOutstanding();
     const [selectedSupplier, setSelectedSupplier] = useState(null);
     const [showDetailModal, setShowDetailModal] = useState(false);
     const [outstandingOrders, setOutstandingOrders] = useState([]);
     const [detailLoading, setDetailLoading] = useState(false);
-    const [showOrderDetail, setShowOrderDetail] = useState(false);
-    const [selectedOrderId, setSelectedOrderId] = useState(null);
+    const [showFilters, setShowFilters] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const handleSearch = (value) => {
+        setSearchTerm(value);
+        setFilters(prev => {
+            const next = { ...prev };
+            if (value) {
+                next.search = value;
+            } else {
+                delete next.search;
+            }
+            return next;
+        });
+    };
+
+    const handleApplyFilters = (filterValues) => {
+        setFilters(prev => ({
+            ...filterValues,
+            ...(prev.search ? { search: prev.search } : {}),
+        }));
+    };
+
+    const handleResetFilters = () => {
+        setSearchTerm('');
+        setFilters({});
+    };
+
+    const filterConfig = [
+        {
+            name: 'payment_status',
+            label: 'Payment Status',
+            type: 'select',
+            options: [
+                { value: 'unpaid', label: 'Unpaid' },
+                { value: 'partial', label: 'Partial' },
+            ],
+        },
+        { name: 'min_outstanding', label: 'Min Outstanding', type: 'number' },
+        { name: 'max_outstanding', label: 'Max Outstanding', type: 'number' },
+    ];
 
     const handleViewDetails = async (supplier) => {
         setSelectedSupplier(supplier);
@@ -35,19 +77,7 @@ const SuppliersOutstandingPage = () => {
     };
 
     const handleViewOrderDetail = (orderId) => {
-        setSelectedOrderId(orderId);
-        setShowOrderDetail(true);
-    };
-
-    const handleOrderUpdated = () => {
-        // Refresh the outstanding orders list
-        if (selectedSupplier) {
-            purchasesApi.suppliers.getOutstandingOrders(selectedSupplier.id).then(orders => {
-                setOutstandingOrders(orders || []);
-            });
-        }
-        // Refresh the main list
-        refetch();
+        navigate(`/purchases/orders/${orderId}`);
     };
 
     const columns = [
@@ -79,45 +109,40 @@ const SuppliersOutstandingPage = () => {
                 <p className="text-neutral-500 mt-1">View suppliers with outstanding balances</p>
             </div>
 
-            <div className="flex gap-4 flex-wrap">
-                <SearchBar
-                    onSearch={(value) => setFilters({ ...filters, search: value })}
-                    placeholder="Search suppliers..."
-                    className="flex-1 min-w-[200px]"
-                />
+            <div className="space-y-4">
+                <div className="flex gap-4">
+                    <div className="flex-1">
+                        <SearchBar
+                            onSearch={handleSearch}
+                            placeholder="Search suppliers..."
+                            className="w-full"
+                        />
+                    </div>
+                    <Button
+                        variant="secondary"
+                        onClick={() => setShowFilters(!showFilters)}
+                        icon={({ className }) => (
+                            <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                            </svg>
+                        )}
+                    >
+                        {showFilters ? 'Hide Filters' : 'Show Filters'}
+                    </Button>
+                    {(Object.keys(filters).length > 0 || searchTerm) && (
+                        <Button variant="secondary" onClick={handleResetFilters}>
+                            Clear All
+                        </Button>
+                    )}
+                </div>
 
-                <select
-                    value={filters.payment_status || ''}
-                    onChange={(e) => setFilters({ ...filters, payment_status: e.target.value })}
-                    className="px-4 py-2.5 bg-white border border-neutral-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all"
-                >
-                    <option value="">All Status</option>
-                    <option value="unpaid">Unpaid</option>
-                    <option value="partial">Partial</option>
-                </select>
-
-                <input
-                    type="number"
-                    placeholder="Min Outstanding"
-                    value={filters.min_outstanding || ''}
-                    onChange={(e) => setFilters({ ...filters, min_outstanding: e.target.value })}
-                    className="px-4 py-2.5 bg-white border border-neutral-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all w-40"
-                />
-
-                <input
-                    type="number"
-                    placeholder="Max Outstanding"
-                    value={filters.max_outstanding || ''}
-                    onChange={(e) => setFilters({ ...filters, max_outstanding: e.target.value })}
-                    className="px-4 py-2.5 bg-white border border-neutral-200 rounded-xl focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all w-40"
-                />
-
-                <button
-                    onClick={() => refetch()}
-                    className="px-4 py-2.5 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors"
-                >
-                    Apply Filters
-                </button>
+                {showFilters && (
+                    <FilterBar
+                        filters={filterConfig}
+                        onApply={handleApplyFilters}
+                        onReset={handleResetFilters}
+                    />
+                )}
             </div>
 
             <Table
@@ -223,17 +248,6 @@ const SuppliersOutstandingPage = () => {
                     </>
                 )}
             </Modal>
-
-            {/* Order Detail Modal - Reused component */}
-            <OrderDetailModal
-                isOpen={showOrderDetail}
-                onClose={() => {
-                    setShowOrderDetail(false);
-                    setSelectedOrderId(null);
-                }}
-                orderId={selectedOrderId}
-                onOrderUpdated={handleOrderUpdated}
-            />
         </div>
     );
 };

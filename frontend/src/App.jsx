@@ -14,6 +14,7 @@ import ShelvesPage from './pages/purchases/ShelvesPage';
 import SuppliersPage from './pages/purchases/SuppliersPage';
 import ProductsPage from './pages/purchases/ProductsPage';
 import PurchaseOrdersPage from './pages/purchases/PurchaseOrdersPage';
+import PurchaseOrderDetailPage from './pages/purchases/PurchaseOrderDetailPage';
 import PaymentsPage from './pages/purchases/PaymentsPage';
 import ReturnsPage from './pages/purchases/ReturnsPage';
 import AllReturnsPage from './pages/purchases/AllReturnsPage';
@@ -135,6 +136,14 @@ const AppContent = () => {
           <ProtectedRoute>
             <Layout>
               <PurchaseOrdersPage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/purchases/orders/:id" element={
+          <ProtectedRoute>
+            <Layout>
+              <PurchaseOrderDetailPage />
             </Layout>
           </ProtectedRoute>
         } />

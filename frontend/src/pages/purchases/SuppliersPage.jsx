@@ -11,8 +11,6 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
 import Card from '../../components/ui/Card';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
-import OrderActionButtons from '../../components/purchases/OrderActionButtons';
-import OrderDetailModal from '../../components/purchases/OrderDetailModal';
 import OrderStatusBadge from '../../components/purchases/OrderStatusBadge';
 import OrderPaymentStatusBadge from '../../components/purchases/OrderPaymentStatusBadge';
 import { useAuth } from '../../context/AuthContext';
@@ -20,7 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 const SuppliersPage = () => {
     const { user } = useAuth();
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
-    const navigate = useNavigate(); // Add this
+    const navigate = useNavigate();
 
     const { data, loading, create, update, delete: deleteSupplier, refetch } = useCRUD(
         purchasesApi.suppliers,
@@ -43,10 +41,6 @@ const SuppliersPage = () => {
     const [formLoading, setFormLoading] = useState(false);
     const [detailLoading, setDetailLoading] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(null);
-    const [showOrderDetail, setShowOrderDetail] = useState(false);
-    const [selectedOrder, setSelectedOrder] = useState(null);
-    const [orderDetailLoading, setOrderDetailLoading] = useState(false);
-    const [orderWithDetails, setOrderWithDetails] = useState(null);
 
     const filteredData = data.filter(item =>
         item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -147,18 +141,8 @@ const SuppliersPage = () => {
         }
     };
 
-    const handleViewOrderDetail = async (order) => {
-        setSelectedOrder(order);
-        setShowOrderDetail(true);
-        setOrderDetailLoading(true);
-        try {
-            const detail = await purchasesApi.orders.getById(order.id);
-            setOrderWithDetails(detail);
-        } catch (error) {
-            console.error('Failed to load order details:', error);
-        } finally {
-            setOrderDetailLoading(false);
-        }
+    const handleViewOrderDetail = (order) => {
+        navigate(`/purchases/orders/${order.id}`);
     };
 
     const handleDelete = async (id) => {
@@ -184,18 +168,6 @@ const SuppliersPage = () => {
 
     const getStatusBadge = (status) => <OrderStatusBadge status={status} />;
     const getPaymentStatusBadge = (status) => <OrderPaymentStatusBadge status={status} />;
-
-    const handleRefreshOrder = async () => {
-        if (selectedOrder) {
-            const detail = await purchasesApi.orders.getById(selectedOrder.id);
-            setOrderWithDetails(detail);
-            // Also refresh the outstanding orders list
-            if (selectedSupplier) {
-                const orders = await purchasesApi.suppliers.getOutstandingOrders(selectedSupplier.id);
-                setOutstandingOrders(orders || []);
-            }
-        }
-    };
 
     if (loading) {
         return (
@@ -414,18 +386,6 @@ const SuppliersPage = () => {
                     </>
                 )}
             </Modal>
-
-            {/* Order Detail Modal */}
-            <OrderDetailModal
-                isOpen={showOrderDetail}
-                onClose={() => {
-                    setShowOrderDetail(false);
-                    setSelectedOrder(null);
-                    setOrderWithDetails(null);
-                }}
-                orderId={selectedOrder?.id}
-                onOrderUpdated={handleRefreshOrder}
-            />
         </div>
     );
 };
