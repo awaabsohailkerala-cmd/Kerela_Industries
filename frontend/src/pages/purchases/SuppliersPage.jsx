@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom'; // Add this import
+import { useNavigate } from 'react-router-dom';
 import { useCRUD } from '../../hooks/usePurchases';
 import { purchasesApi } from '../../services/purchasesApi';
 import Table from '../../components/ui/Table';
@@ -14,6 +13,8 @@ import Card from '../../components/ui/Card';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import OrderActionButtons from '../../components/purchases/OrderActionButtons';
 import OrderDetailModal from '../../components/purchases/OrderDetailModal';
+import OrderStatusBadge from '../../components/purchases/OrderStatusBadge';
+import OrderPaymentStatusBadge from '../../components/purchases/OrderPaymentStatusBadge';
 import { useAuth } from '../../context/AuthContext';
 
 const SuppliersPage = () => {
@@ -181,22 +182,8 @@ const SuppliersPage = () => {
         setEditingSupplier(null);
     };
 
-    const getStatusBadge = (status) => {
-        const variants = {
-            draft: 'draft',
-            confirmed: 'confirmed',
-        };
-        return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-    };
-
-    const getPaymentStatusBadge = (status) => {
-        const variants = {
-            unpaid: 'unpaid',
-            partial: 'partial',
-            paid: 'paid',
-        };
-        return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-    };
+    const getStatusBadge = (status) => <OrderStatusBadge status={status} />;
+    const getPaymentStatusBadge = (status) => <OrderPaymentStatusBadge status={status} />;
 
     const handleRefreshOrder = async () => {
         if (selectedOrder) {

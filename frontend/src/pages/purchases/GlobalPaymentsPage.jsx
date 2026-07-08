@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { purchasesApi } from '../../services/purchasesApi';
 import Table from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
 import SearchBar from '../../components/ui/SearchBar';
-import Select from '../../components/ui/Select';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
 import FilterBar from '../../components/ui/FilterBar';
@@ -163,11 +161,6 @@ const GlobalPaymentsPage = () => {
                 <p className="text-neutral-500 mt-1">
                     Search and manage all payments across all purchase orders
                 </p>
-                <div className="mt-2 text-sm text-neutral-400">
-                    <p>• This page shows all payments from all suppliers</p>
-                    <p>• Use the search bar to find a payment by reference number</p>
-                    <p>• Click "View" on any payment to see it in the order context</p>
-                </div>
             </div>
 
             <div className="space-y-4">
@@ -207,6 +200,14 @@ const GlobalPaymentsPage = () => {
             </div>
 
             <Table columns={columns} data={payments} />
+
+            {payments.length === 0 && (
+                <div className="text-center py-12">
+                    <div className="text-6xl mb-4">💰</div>
+                    <h3 className="text-lg font-semibold text-neutral-900">No Payments Found</h3>
+                    <p className="text-sm text-neutral-500 mt-1">Try adjusting your search or filters</p>
+                </div>
+            )}
         </div>
     );
 };

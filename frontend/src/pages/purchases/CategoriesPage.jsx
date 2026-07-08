@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useCRUD } from '../../hooks/usePurchases';
 import { purchasesApi } from '../../services/purchasesApi';
 import Table from '../../components/ui/Table';

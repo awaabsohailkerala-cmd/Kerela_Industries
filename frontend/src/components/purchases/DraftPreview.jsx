@@ -4,6 +4,25 @@ import Card from '../ui/Card';
 import Badge from '../ui/Badge';
 
 const DraftPreview = ({ items, totals, warnings }) => {
+    const subtotal = parseFloat(totals?.subtotal) || 0;
+    const totalCogs = parseFloat(totals?.total_cogs) || 0;
+    const grossProfit = parseFloat(totals?.gross_profit) || 0;
+
+    // Calculate GST and WHT totals from items
+    const gstTotal = items.reduce((sum, item) => {
+        const lineTotal = parseFloat(item.line_total) || 0;
+        const gst = parseFloat(item.gst) || 0;
+        return sum + (lineTotal * gst / 100);
+    }, 0);
+
+    const whtTotal = items.reduce((sum, item) => {
+        const lineTotal = parseFloat(item.line_total) || 0;
+        const wht = parseFloat(item.wht) || 0;
+        return sum + (lineTotal * wht / 100);
+    }, 0);
+
+    const grandTotal = subtotal + gstTotal - whtTotal;
+
     return (
         <Card className="p-6">
             <h3 className="font-semibold text-neutral-900 mb-4">Order Preview</h3>
@@ -39,7 +58,7 @@ const DraftPreview = ({ items, totals, warnings }) => {
                             )}
                         </div>
                         <span className="font-medium">
-                            {item.line_total ? `$${parseFloat(item.line_total).toFixed(2)}` : 'N/A'}
+                            {item.line_total ? parseFloat(item.line_total).toFixed(2) : 'N/A'}
                         </span>
                     </motion.div>
                 ))}
@@ -48,15 +67,27 @@ const DraftPreview = ({ items, totals, warnings }) => {
             <div className="mt-4 pt-4 border-t border-neutral-200 space-y-1">
                 <div className="flex justify-between text-sm">
                     <span className="text-neutral-500">Subtotal</span>
-                    <span className="font-medium">${totals.subtotal}</span>
+                    <span className="font-medium">{subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                    <span className="text-neutral-500">Total COGS</span>
-                    <span className="font-medium">${totals.total_cogs}</span>
+                    <span className="text-neutral-500">GST Total</span>
+                    <span className="font-medium">{gstTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                    <span className="text-neutral-500">WHT Total</span>
+                    <span className="font-medium">{whtTotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-lg font-bold pt-2 border-t border-neutral-200">
-                    <span>Gross Profit</span>
-                    <span className="text-primary-600">${totals.gross_profit}</span>
+                    <span>Grand Total</span>
+                    <span className="text-primary-600">{grandTotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm pt-1">
+                    <span className="text-neutral-500">Total COGS</span>
+                    <span className="font-medium">{totalCogs.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                    <span className="text-neutral-500">Gross Profit</span>
+                    <span className="font-medium text-success-600">{grossProfit.toFixed(2)}</span>
                 </div>
             </div>
 

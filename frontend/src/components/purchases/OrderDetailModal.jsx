@@ -4,6 +4,8 @@ import Modal from '../ui/Modal';
 import Badge from '../ui/Badge';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import OrderActionButtons from './OrderActionButtons';
+import OrderStatusBadge from './OrderStatusBadge';
+import OrderPaymentStatusBadge from './OrderPaymentStatusBadge';
 import { purchasesApi } from '../../services/purchasesApi';
 
 const OrderDetailModal = ({
@@ -55,22 +57,8 @@ const OrderDetailModal = ({
         }
     };
 
-    const getStatusBadge = (status) => {
-        const variants = {
-            draft: 'draft',
-            confirmed: 'confirmed',
-        };
-        return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-    };
-
-    const getPaymentStatusBadge = (status) => {
-        const variants = {
-            unpaid: 'unpaid',
-            partial: 'partial',
-            paid: 'paid',
-        };
-        return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-    };
+    const getStatusBadge = (status) => <OrderStatusBadge status={status} />;
+    const getPaymentStatusBadge = (status) => <OrderPaymentStatusBadge status={status} />;
 
     if (loading) {
         return (

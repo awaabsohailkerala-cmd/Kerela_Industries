@@ -4,6 +4,7 @@ import Button from '../ui/Button';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
+import OrderPaymentStatusBadge from './OrderPaymentStatusBadge';
 import { purchasesApi } from '../../services/purchasesApi';
 
 const OrderActionButtons = ({
@@ -559,12 +560,7 @@ const OrderActionButtons = ({
                             </div>
                             <div>
                                 <p className="text-sm text-neutral-500">Payment Status</p>
-                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${paymentSummary.payment_status === 'paid' ? 'bg-green-100 text-green-700' :
-                                        paymentSummary.payment_status === 'partial' ? 'bg-amber-100 text-amber-700' :
-                                            'bg-red-100 text-red-700'
-                                    }`}>
-                                    {paymentSummary.payment_status_display || paymentSummary.payment_status || 'N/A'}
-                                </span>
+                                <OrderPaymentStatusBadge status={paymentSummary.payment_status} />
                             </div>
                             <div>
                                 <p className="text-sm text-neutral-500">Total Paid</p>

@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { purchasesApi } from '../../services/purchasesApi';
 import Table from '../../components/ui/Table';
@@ -208,11 +207,6 @@ const PaymentsPage = () => {
                     <p className="text-neutral-500 mt-1">
                         Manage payments for Order #{orderDetails?.order_number || orderId}
                     </p>
-                    <div className="mt-1 text-sm text-neutral-400">
-                        <p>• This page shows all payments for this specific order</p>
-                        <p>• Use the search bar to filter by reference number</p>
-                        <p>• Go to "All Payments" to see payments across all orders</p>
-                    </div>
                     <div className="flex gap-4 mt-2">
                         <Link to="/purchases/orders" className="text-sm text-primary-600 hover:text-primary-700">
                             ← Back to Orders

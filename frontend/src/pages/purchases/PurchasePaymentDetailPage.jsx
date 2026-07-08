@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { purchasesApi } from '../../services/purchasesApi';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';

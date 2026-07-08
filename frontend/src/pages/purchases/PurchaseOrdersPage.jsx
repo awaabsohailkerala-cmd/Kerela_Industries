@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { purchasesApi } from '../../services/purchasesApi';
 import Table from '../../components/ui/Table';
@@ -15,7 +14,9 @@ import Card from '../../components/ui/Card';
 import FilterBar from '../../components/ui/FilterBar';
 import LineItemRow from '../../components/purchases/LineItemRow';
 import DraftPreview from '../../components/purchases/DraftPreview';
-import OrderDetailModal from '../../components/purchases/OrderDetailModal'; // Add this import
+import OrderDetailModal from '../../components/purchases/OrderDetailModal';
+import OrderStatusBadge from '../../components/purchases/OrderStatusBadge';
+import OrderPaymentStatusBadge from '../../components/purchases/OrderPaymentStatusBadge';
 import { useNavigate } from 'react-router-dom';
 
 const PurchaseOrdersPage = () => {
@@ -142,23 +143,6 @@ const PurchaseOrdersPage = () => {
         setSearchTerm(value);
     };
 
-    const getStatusBadge = (status) => {
-        const variants = {
-            draft: 'draft',
-            confirmed: 'confirmed',
-        };
-        return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-    };
-
-    const getPaymentStatusBadge = (status) => {
-        const variants = {
-            unpaid: 'unpaid',
-            partial: 'partial',
-            paid: 'paid',
-        };
-        return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
-    };
-
     const columns = [
         { key: 'order_number', label: 'Order #', width: '120px' },
         {
@@ -169,7 +153,7 @@ const PurchaseOrdersPage = () => {
         {
             key: 'status',
             label: 'Status',
-            render: getStatusBadge
+            render: (value) => <OrderStatusBadge status={value} />
         },
         {
             key: 'net_payable',
@@ -182,7 +166,15 @@ const PurchaseOrdersPage = () => {
         {
             key: 'payment_status',
             label: 'Payment',
-            render: getPaymentStatusBadge
+            render: (value) => <OrderPaymentStatusBadge status={value} />
+        },
+        {
+            key: 'payable_outstanding',
+            label: 'Outstanding (PKR)',
+            render: (value) => {
+                const num = typeof value === 'string' ? parseFloat(value) : value;
+                return isNaN(num) ? '0.00' : num.toFixed(2);
+            }
         },
         {
             key: 'created_at',
@@ -566,6 +558,14 @@ const PurchaseOrdersPage = () => {
                 data={orders}
                 onRowClick={handleViewOrder}
             />
+
+            {orders.length === 0 && (
+                <div className="text-center py-12">
+                    <div className="text-6xl mb-4">📦</div>
+                    <h3 className="text-lg font-semibold text-neutral-900">No Orders Found</h3>
+                    <p className="text-sm text-neutral-500 mt-1">Try adjusting your search or filters</p>
+                </div>
+            )}
 
             {/* Create Order Modal */}
             <Modal
