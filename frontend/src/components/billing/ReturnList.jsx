@@ -22,12 +22,11 @@ const ReturnList = ({ returns, onAccept, isAdmin }) => {
 
     return (
         <div className="space-y-3">
-            {returns.map((returnItem, index) => (
+            {returns.map((returnItem) => (
                 <motion.div
-                    key={returnItem.id || index}
+                    key={returnItem.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
                     className="p-4 bg-neutral-50 rounded-lg hover:bg-neutral-100 transition-colors"
                 >
                     <div className="flex justify-between items-start">
@@ -44,7 +43,7 @@ const ReturnList = ({ returns, onAccept, isAdmin }) => {
                             )}
                             {returnItem.items && returnItem.items.length > 0 && (
                                 <div className="mt-2">
-                                    <p className="text-sm text-neutral-500">Items:</p>
+                                    <p className="text-sm text-neutral-500">Returned Items:</p>
                                     <div className="mt-1 space-y-1">
                                         {returnItem.items.map((item, idx) => (
                                             <div key={item.id || idx} className="text-sm flex justify-between items-center bg-white p-2 rounded-lg">

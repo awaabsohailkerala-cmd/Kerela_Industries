@@ -64,7 +64,7 @@ const InvoiceTable = ({
         columns.push({
             key: 'actions',
             label: 'Actions',
-            width: '180px',
+            width: '200px',
             render: (_, row) => (
                 <div className="flex gap-1 flex-wrap">
                     {row.status === 'draft' && (
@@ -92,16 +92,30 @@ const InvoiceTable = ({
                                     Confirm
                                 </Button>
                             )}
+                            <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onPrint(row.id, true);
+                                }}
+                            >
+                                Print Draft
+                            </Button>
                         </>
                     )}
-                    {row.status === 'confirmed' && isAdmin && (
-                        <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={(e) => { e.stopPropagation(); onPrint(row.id); }}
-                        >
-                            Print
-                        </Button>
+                    {row.status !== 'draft' && (
+                        <>
+                            {isAdmin && (
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={(e) => { e.stopPropagation(); onPrint(row.id, false); }}
+                                >
+                                    Print
+                                </Button>
+                            )}
+                        </>
                     )}
                 </div>
             ),

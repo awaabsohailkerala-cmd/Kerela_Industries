@@ -51,18 +51,20 @@ const InvoiceDetailPage = () => {
             setInvoice(invoiceData);
             setPaymentSummary(summaryData);
 
-            // Fetch additional data
+            // Fetch additional data with error catching for each request
             const [paymentsData, returnsData, pdfsData] = await Promise.all([
-                billingApi.payments.getByInvoice(id),
-                billingApi.returns.getByInvoice(id),
-                invoiceData?.status === 'confirmed' ? billingApi.invoices.getPDFs(id) : Promise.resolve([]),
+                billingApi.payments.getByInvoice(id).catch(() => []),
+                billingApi.returns.getByInvoice(id).catch(() => []),
+                invoiceData?.status !== 'draft'
+                    ? billingApi.invoices.getPDFs(id).catch(() => [])
+                    : Promise.resolve([]),
             ]);
             setPayments(paymentsData || []);
             setReturns(returnsData || []);
             setPdfs(pdfsData || []);
 
             // Check if there's a pending return
-            const hasPending = returnsData.some(r => r.status === 'pending');
+            const hasPending = (returnsData || []).some(r => r.status === 'pending');
             setHasPendingReturn(hasPending);
         } catch (error) {
             console.error('Failed to fetch invoice details:', error);
@@ -71,12 +73,39 @@ const InvoiceDetailPage = () => {
         }
     };
 
-    const handlePrint = () => {
+    const handlePrint = async () => {
         const isDraft = invoice?.status === 'draft';
-        // Use the full URL with the API base from environment
-        const baseUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-        const printUrl = `${baseUrl}/api/billing/invoices/${id}/print/?is_draft=${isDraft}`;
-        window.open(printUrl, '_blank');
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                alert('Please login again to print');
+                return;
+            }
+
+            const response = await fetch(
+                `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'}/api/billing/invoices/${id}/print/?is_draft=${isDraft}`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                    },
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error('Failed to print invoice');
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            window.open(url, '_blank');
+
+            setTimeout(() => {
+                window.URL.revokeObjectURL(url);
+            }, 1000);
+        } catch (error) {
+            console.error('Failed to print:', error);
+            alert('Failed to print invoice. Please try again.');
+        }
     };
 
     const handleSavePDF = async (fileName) => {
@@ -212,7 +241,7 @@ const InvoiceDetailPage = () => {
                         Print
                     </Button>
 
-                    {invoice.status === 'confirmed' && isAdmin && (
+                    {invoice.status !== 'draft' && isAdmin && (
                         <>
                             <Button variant="secondary" onClick={() => setShowSavePDFModal(true)}>
                                 Save PDF
@@ -220,7 +249,7 @@ const InvoiceDetailPage = () => {
                             <Button variant="secondary" onClick={() => setShowPaymentForm(true)}>
                                 Record Payment
                             </Button>
-                            {!hasPendingReturn && (
+                            {!hasPendingReturn && invoice.status !== 'returned' && (
                                 <Button variant="secondary" onClick={() => setShowReturnForm(true)}>
                                     Create Return
                                 </Button>
@@ -275,7 +304,7 @@ const InvoiceDetailPage = () => {
             </Card>
 
             {/* Payment Summary */}
-            {paymentSummary && invoice.status === 'confirmed' && (
+            {paymentSummary && invoice.status !== 'draft' && (
                 <PaymentSummaryCard summary={paymentSummary} />
             )}
 
@@ -351,7 +380,7 @@ const InvoiceDetailPage = () => {
             )}
 
             {/* Payments Section - Only for confirmed invoices */}
-            {invoice.status === 'confirmed' && (
+            {invoice.status !== 'draft' && (
                 <Card className="p-6">
                     <h3 className="font-semibold text-neutral-900 mb-3">Payment History</h3>
                     <PaymentHistoryList
@@ -363,7 +392,7 @@ const InvoiceDetailPage = () => {
             )}
 
             {/* Returns Section - Only for confirmed invoices */}
-            {invoice.status === 'confirmed' && (
+            {invoice.status !== 'draft' && (
                 <Card className="p-6">
                     <h3 className="font-semibold text-neutral-900 mb-3">Returns</h3>
                     <ReturnList
@@ -375,7 +404,7 @@ const InvoiceDetailPage = () => {
             )}
 
             {/* Saved PDFs - Only for confirmed invoices */}
-            {invoice.status === 'confirmed' && pdfs.length > 0 && (
+            {invoice.status !== 'draft' && pdfs.length > 0 && (
                 <Card className="p-6">
                     <h3 className="font-semibold text-neutral-900 mb-3">Saved PDFs</h3>
                     <div className="space-y-2">

@@ -102,8 +102,38 @@ const InvoicesPage = () => {
         }
     };
 
-    const handlePrint = (id, isDraft = false) => {
-        window.open(`/api/billing/invoices/${id}/print/?is_draft=${isDraft}`, '_blank');
+    const handlePrint = async (id, isDraft = false) => {
+        try {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                alert('Please login again to print');
+                return;
+            }
+
+            const response = await fetch(
+                `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'}/api/billing/invoices/${id}/print/?is_draft=${isDraft}`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                    },
+                }
+            );
+
+            if (!response.ok) {
+                throw new Error('Failed to print invoice');
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            window.open(url, '_blank');
+
+            setTimeout(() => {
+                window.URL.revokeObjectURL(url);
+            }, 1000);
+        } catch (error) {
+            console.error('Failed to print:', error);
+            alert('Failed to print invoice. Please try again.');
+        }
     };
 
     const handleRowClick = (invoice) => {
