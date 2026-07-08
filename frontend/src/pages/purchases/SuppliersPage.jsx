@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom'; // Add this import
 import { useCRUD } from '../../hooks/usePurchases';
 import { purchasesApi } from '../../services/purchasesApi';
 import Table from '../../components/ui/Table';
@@ -12,12 +13,13 @@ import Badge from '../../components/ui/Badge';
 import Card from '../../components/ui/Card';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import OrderActionButtons from '../../components/purchases/OrderActionButtons';
-import OrderDetailModal from '../../components/purchases/OrderDetailModal'; // Add this import
+import OrderDetailModal from '../../components/purchases/OrderDetailModal';
 import { useAuth } from '../../context/AuthContext';
 
 const SuppliersPage = () => {
     const { user } = useAuth();
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
+    const navigate = useNavigate(); // Add this
 
     const { data, loading, create, update, delete: deleteSupplier, refetch } = useCRUD(
         purchasesApi.suppliers,
@@ -65,7 +67,7 @@ const SuppliersPage = () => {
         {
             key: 'actions',
             label: 'Actions',
-            width: '120px',
+            width: '180px', // Increased width to accommodate new button
             render: (_, row) => isAdmin && !row.is_deleted && (
                 <div className="flex gap-2">
                     <button
@@ -73,16 +75,25 @@ const SuppliersPage = () => {
                             e.stopPropagation();
                             handleEdit(row);
                         }}
-                        className="text-primary-600 hover:text-primary-700"
+                        className="text-primary-600 hover:text-primary-700 text-sm"
                     >
                         Edit
                     </button>
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
+                            navigate(`/ledger/supplier/${row.id}`);
+                        }}
+                        className="text-indigo-600 hover:text-indigo-700 text-sm"
+                    >
+                        Ledger
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
                             setDeleteConfirm(row);
                         }}
-                        className="text-error-600 hover:text-error-700"
+                        className="text-error-600 hover:text-error-700 text-sm"
                     >
                         Delete
                     </button>
@@ -417,7 +428,7 @@ const SuppliersPage = () => {
                 )}
             </Modal>
 
-            {/* Order Detail Modal - Using the new component */}
+            {/* Order Detail Modal */}
             <OrderDetailModal
                 isOpen={showOrderDetail}
                 onClose={() => {

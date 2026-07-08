@@ -56,6 +56,7 @@ const Layout = ({ children }) => {
         { name: 'Profile', path: '/profile', icon: '👤' },
         { name: 'Inventory', path: '/purchases/inventory', icon: '🏪' },
         { name: 'Rates', path: '/rates', icon: '💰' },
+        { name: 'Ledger', path: '/ledger', icon: '📒' },
     ];
 
     const purchasesNavigation = [

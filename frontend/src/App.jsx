@@ -42,8 +42,13 @@ import ReturnDetailPage from './pages/billing/ReturnDetailPage';
 // Expenses pages
 import ExpenseCategoriesPage from './pages/expenses/ExpenseCategoriesPage';
 import ExpensesPage from './pages/expenses/ExpensesPage';
-import ExpenseDetailPage from './pages/expenses/ExpenseDetailPage'; // Add this import
-import EditExpensePage from './pages/expenses/EditExpensePage'; // Add this import
+import ExpenseDetailPage from './pages/expenses/ExpenseDetailPage';
+import EditExpensePage from './pages/expenses/EditExpensePage';
+
+// Ledger pages
+import LedgerListPage from './pages/ledger/LedgerListPage';
+import LedgerDetailPage from './pages/ledger/LedgerDetailPage';
+import LedgerBySupplierPage from './pages/ledger/LedgerBySupplierPage';
 
 import './App.css';
 
@@ -324,6 +329,31 @@ const AppContent = () => {
           <ProtectedRoute>
             <Layout>
               <EditExpensePage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        {/* Ledger Routes */}
+        <Route path="/ledger" element={
+          <ProtectedRoute>
+            <Layout>
+              <LedgerListPage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/ledger/:id" element={
+          <ProtectedRoute>
+            <Layout>
+              <LedgerDetailPage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/ledger/supplier/:supplierId" element={
+          <ProtectedRoute>
+            <Layout>
+              <LedgerBySupplierPage />
             </Layout>
           </ProtectedRoute>
         } />
