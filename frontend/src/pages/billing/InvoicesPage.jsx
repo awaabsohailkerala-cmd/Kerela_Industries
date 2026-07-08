@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { useBillingCRUD } from '../../hooks/useBilling';
 import { billingApi } from '../../services/billingApi';
 import InvoiceTable from '../../components/billing/InvoiceTable';
 import InvoiceFilterBar from '../../components/billing/InvoiceFilterBar';
@@ -15,44 +14,47 @@ const InvoicesPage = () => {
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
     const navigate = useNavigate();
 
+    const [invoices, setInvoices] = useState([]);
+    const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [showFilters, setShowFilters] = useState(false);
     const [filterValues, setFilterValues] = useState({});
 
-    const { data, loading, filters, setFilters, resetFilters, refetch } = useBillingCRUD(
-        billingApi.invoices
-    );
+    const fetchInvoices = useCallback(async () => {
+        setLoading(true);
+        try {
+            const params = { ...filterValues };
+            if (searchTerm) {
+                params.bill_number = searchTerm;
+            }
+
+            let result;
+            switch (activeTab) {
+                case 'drafts':
+                    result = await billingApi.invoices.getDrafts(params);
+                    break;
+                case 'confirmed':
+                    result = await billingApi.invoices.getConfirmed(params);
+                    break;
+                case 'outstanding':
+                    result = await billingApi.invoices.getOutstanding(params);
+                    break;
+                default:
+                    result = await billingApi.invoices.getAll(params);
+            }
+            setInvoices(result || []);
+        } catch (error) {
+            console.error('Failed to fetch invoices:', error);
+            setInvoices([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [activeTab, filterValues, searchTerm]);
 
     useEffect(() => {
-        // Fetch based on tab and filters
-        const params = { ...filterValues };
-        if (searchTerm) params.bill_number = searchTerm;
-
-        const fetchData = async () => {
-            try {
-                let result;
-                switch (activeTab) {
-                    case 'drafts':
-                        result = await billingApi.invoices.getDrafts(params);
-                        break;
-                    case 'confirmed':
-                        result = await billingApi.invoices.getConfirmed(params);
-                        break;
-                    case 'outstanding':
-                        result = await billingApi.invoices.getOutstanding(params);
-                        break;
-                    default:
-                        result = await billingApi.invoices.getAll(params);
-                }
-                // Update data directly (bypassing the hook's fetch)
-                refetch();
-            } catch (error) {
-                console.error('Failed to fetch invoices:', error);
-            }
-        };
-        fetchData();
-    }, [activeTab, filterValues, searchTerm]);
+        fetchInvoices();
+    }, [fetchInvoices]);
 
     const tabs = [
         { value: 'all', label: 'All Invoices' },
@@ -72,7 +74,6 @@ const InvoicesPage = () => {
     const handleResetFilters = () => {
         setFilterValues({});
         setSearchTerm('');
-        resetFilters();
     };
 
     const handleEdit = (invoice) => {
@@ -83,7 +84,7 @@ const InvoicesPage = () => {
         if (window.confirm('Are you sure you want to delete this draft invoice?')) {
             try {
                 await billingApi.invoices.delete(id);
-                refetch();
+                fetchInvoices();
             } catch (error) {
                 console.error('Failed to delete invoice:', error);
             }
@@ -94,15 +95,15 @@ const InvoicesPage = () => {
         if (window.confirm('Are you sure you want to confirm this invoice?')) {
             try {
                 await billingApi.invoices.confirm(id);
-                refetch();
+                fetchInvoices();
             } catch (error) {
                 console.error('Failed to confirm invoice:', error);
             }
         }
     };
 
-    const handlePrint = (id) => {
-        window.open(`/api/billing/invoices/${id}/print/?is_draft=false`, '_blank');
+    const handlePrint = (id, isDraft = false) => {
+        window.open(`/api/billing/invoices/${id}/print/?is_draft=${isDraft}`, '_blank');
     };
 
     const handleRowClick = (invoice) => {
@@ -177,7 +178,7 @@ const InvoicesPage = () => {
             </div>
 
             <InvoiceTable
-                invoices={data}
+                invoices={invoices}
                 onRowClick={handleRowClick}
                 onEdit={handleEdit}
                 onDelete={handleDelete}

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { billingApi } from '../../services/billingApi';
 import { purchasesApi } from '../../services/purchasesApi';
@@ -10,13 +9,18 @@ import Select from '../../components/ui/Select';
 import Card from '../../components/ui/Card';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import LineItemRow from '../../components/billing/LineItemRow';
+import DraftPreviewPanel from '../../components/billing/DraftPreviewPanel';
 
-const CreateInvoicePage = () => {
-    const { user } = useAuth();
+const EditInvoicePage = () => {
+    const { id } = useParams();
     const navigate = useNavigate();
-    const [loading, setLoading] = useState(false);
+    const { user } = useAuth();
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
     const [customers, setCustomers] = useState([]);
     const [products, setProducts] = useState([]);
+    const [invoice, setInvoice] = useState(null);
+    const [preview, setPreview] = useState(null);
 
     const [formData, setFormData] = useState({
         customer_id: '',
@@ -24,20 +28,41 @@ const CreateInvoicePage = () => {
     });
 
     useEffect(() => {
-        loadInitialData();
-    }, []);
+        loadData();
+    }, [id]);
 
-    const loadInitialData = async () => {
+    const loadData = async () => {
         setLoading(true);
         try {
-            const [customersData, productsData] = await Promise.all([
+            const [invoiceData, customersData, productsData] = await Promise.all([
+                billingApi.invoices.getById(id),
                 billingApi.customers.getAll(),
                 purchasesApi.products.getAll(),
             ]);
+
+            setInvoice(invoiceData);
             setCustomers(customersData || []);
             setProducts(productsData || []);
+
+            // Populate form data
+            setFormData({
+                customer_id: invoiceData.customer?.id || '',
+                items: invoiceData.items?.map(item => ({
+                    product_id: item.product,
+                    quantity: item.quantity,
+                    discount: item.discount || 0,
+                    gst: item.gst || 0,
+                    wht: item.wht || 0,
+                    selling_price: item.selling_price || 0,
+                })) || [],
+            });
+
+            // Set preview if available
+            if (invoiceData.draft_preview) {
+                setPreview(invoiceData.draft_preview);
+            }
         } catch (error) {
-            console.error('Failed to load initial data:', error);
+            console.error('Failed to load data:', error);
         } finally {
             setLoading(false);
         }
@@ -59,7 +84,6 @@ const CreateInvoicePage = () => {
             items: prev.items.map((item, i) => {
                 if (i === index) {
                     const updatedItem = { ...item, [field]: value };
-                    // If product changes, update selling price
                     if (field === 'product_id') {
                         const product = products.find(p => p.id === parseInt(value));
                         updatedItem.selling_price = product?.rate?.selling_price || 0;
@@ -78,42 +102,11 @@ const CreateInvoicePage = () => {
         }));
     };
 
-    // Calculate totals
-    const calculateTotals = () => {
-        let subtotal = 0;
-        let gstTotal = 0;
-        let whtTotal = 0;
-        let grandTotal = 0;
-
-        formData.items.forEach(item => {
-            const quantity = parseInt(item.quantity) || 0;
-            const sellingPrice = parseFloat(item.selling_price) || 0;
-            const discount = parseFloat(item.discount) || 0;
-            const gst = parseFloat(item.gst) || 0;
-            const wht = parseFloat(item.wht) || 0;
-
-            const lineTotal = quantity * sellingPrice;
-            const discountAmount = lineTotal * (discount / 100);
-            const afterDiscount = lineTotal - discountAmount;
-            const gstAmount = afterDiscount * (gst / 100);
-            const whtAmount = afterDiscount * (wht / 100);
-            const total = afterDiscount + gstAmount - whtAmount;
-
-            subtotal += lineTotal;
-            gstTotal += gstAmount;
-            whtTotal += whtAmount;
-            grandTotal += total;
-        });
-
-        return { subtotal, gstTotal, whtTotal, grandTotal };
-    };
-
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setLoading(true);
+        setSaving(true);
         try {
             const data = {
-                customer_id: parseInt(formData.customer_id),
                 items: formData.items.map(item => ({
                     product_id: parseInt(item.product_id),
                     quantity: parseInt(item.quantity) || 0,
@@ -122,21 +115,20 @@ const CreateInvoicePage = () => {
                     wht: parseFloat(item.wht) || 0,
                 })),
             };
-            const result = await billingApi.invoices.create(data);
-            navigate(`/billing/invoices/${result.id}`);
+            await billingApi.invoices.update(id, data);
+            navigate(`/billing/invoices/${id}`);
         } catch (error) {
-            console.error('Failed to create invoice:', error);
-            alert(error.response?.data?.detail || 'Failed to create invoice');
+            console.error('Failed to update invoice:', error);
         } finally {
-            setLoading(false);
+            setSaving(false);
         }
     };
 
     const handleCancel = () => {
-        navigate('/billing/invoices');
+        navigate(`/billing/invoices/${id}`);
     };
 
-    if (loading && customers.length === 0) {
+    if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[60vh]">
                 <LoadingSpinner size="lg" />
@@ -144,21 +136,31 @@ const CreateInvoicePage = () => {
         );
     }
 
-    const totals = calculateTotals();
+    if (!invoice || invoice.status !== 'draft') {
+        return (
+            <div className="text-center py-12">
+                <h2 className="text-2xl font-semibold text-neutral-900">Invoice Not Editable</h2>
+                <p className="text-neutral-500 mt-1">Only draft invoices can be edited.</p>
+                <Button onClick={() => navigate('/billing/invoices')} className="mt-4">
+                    Back to Invoices
+                </Button>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold text-neutral-900">Create Invoice</h1>
-                    <p className="text-neutral-500 mt-1">Create a new draft invoice</p>
+                    <h1 className="text-3xl font-bold text-neutral-900">Edit Invoice</h1>
+                    <p className="text-neutral-500 mt-1">{invoice.bill_number}</p>
                 </div>
                 <div className="flex gap-3">
                     <Button variant="secondary" onClick={handleCancel}>
                         Cancel
                     </Button>
-                    <Button onClick={handleSubmit} loading={loading}>
-                        Create Draft
+                    <Button onClick={handleSubmit} loading={saving}>
+                        Update Draft
                     </Button>
                 </div>
             </div>
@@ -174,6 +176,7 @@ const CreateInvoicePage = () => {
                                 { value: '', label: 'Select customer' },
                                 ...customers.map(c => ({ value: c.id, label: `${c.code} - ${c.name}` })),
                             ]}
+                            disabled={true} // Customer cannot be changed on edit
                             required
                         />
                     </div>
@@ -204,42 +207,14 @@ const CreateInvoicePage = () => {
                             ))
                         )}
                     </div>
-
-                    {/* Simple Totals Summary */}
-                    {formData.items.length > 0 && (
-                        <div className="mt-6 pt-4 border-t border-neutral-200">
-                            <div className="flex flex-col items-end space-y-2 max-w-xs ml-auto">
-                                <div className="flex justify-between w-full">
-                                    <span className="text-sm text-neutral-500">Subtotal:</span>
-                                    <span className="text-sm font-medium text-neutral-900">
-                                        PKR {totals.subtotal.toFixed(2)}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between w-full">
-                                    <span className="text-sm text-neutral-500">GST Total:</span>
-                                    <span className="text-sm font-medium text-neutral-900">
-                                        PKR {totals.gstTotal.toFixed(2)}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between w-full">
-                                    <span className="text-sm text-neutral-500">WHT Total:</span>
-                                    <span className="text-sm font-medium text-neutral-900">
-                                        PKR {totals.whtTotal.toFixed(2)}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between w-full pt-2 border-t border-neutral-200">
-                                    <span className="text-base font-semibold text-neutral-900">Grand Total:</span>
-                                    <span className="text-base font-bold text-primary-600">
-                                        PKR {totals.grandTotal.toFixed(2)}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    )}
                 </Card>
+
+                {formData.items.length > 0 && preview && (
+                    <DraftPreviewPanel preview={preview} />
+                )}
             </form>
         </div>
     );
 };
 
-export default CreateInvoicePage;
+export default EditInvoicePage;

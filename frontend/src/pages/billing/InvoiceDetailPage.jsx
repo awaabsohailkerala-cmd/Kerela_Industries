@@ -6,6 +6,7 @@ import { billingApi } from '../../services/billingApi';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import Badge from '../../components/ui/Badge';
 import InvoiceStatusBadge from '../../components/billing/InvoiceStatusBadge';
 import PaymentStatusBadge from '../../components/billing/PaymentStatusBadge';
 import PaymentSummaryCard from '../../components/billing/PaymentSummaryCard';
@@ -14,6 +15,7 @@ import PaymentForm from '../../components/billing/PaymentForm';
 import ReturnList from '../../components/billing/ReturnList';
 import ReturnForm from '../../components/billing/ReturnForm';
 import SavePDFModal from '../../components/billing/SavePDFModal';
+import DraftPreviewPanel from '../../components/billing/DraftPreviewPanel';
 import Modal from '../../components/ui/Modal';
 
 const InvoiceDetailPage = () => {
@@ -32,6 +34,8 @@ const InvoiceDetailPage = () => {
     const [pdfs, setPdfs] = useState([]);
     const [returns, setReturns] = useState([]);
     const [payments, setPayments] = useState([]);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [hasPendingReturn, setHasPendingReturn] = useState(false);
 
     useEffect(() => {
         fetchData();
@@ -56,6 +60,10 @@ const InvoiceDetailPage = () => {
             setPayments(paymentsData || []);
             setReturns(returnsData || []);
             setPdfs(pdfsData || []);
+
+            // Check if there's a pending return
+            const hasPending = returnsData.some(r => r.status === 'pending');
+            setHasPendingReturn(hasPending);
         } catch (error) {
             console.error('Failed to fetch invoice details:', error);
         } finally {
@@ -65,7 +73,10 @@ const InvoiceDetailPage = () => {
 
     const handlePrint = () => {
         const isDraft = invoice?.status === 'draft';
-        window.open(`/api/billing/invoices/${id}/print/?is_draft=${isDraft}`, '_blank');
+        // Use the full URL with the API base from environment
+        const baseUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+        const printUrl = `${baseUrl}/api/billing/invoices/${id}/print/?is_draft=${isDraft}`;
+        window.open(printUrl, '_blank');
     };
 
     const handleSavePDF = async (fileName) => {
@@ -76,6 +87,7 @@ const InvoiceDetailPage = () => {
             await fetchData();
         } catch (error) {
             console.error('Failed to save PDF:', error);
+            alert(error.response?.data?.detail || 'Failed to save PDF');
         } finally {
             setFormLoading(false);
         }
@@ -97,6 +109,7 @@ const InvoiceDetailPage = () => {
             await billingApi.payments.create(id, data);
             setShowPaymentForm(false);
             await fetchData();
+            alert('Payment recorded successfully!');
         } catch (error) {
             console.error('Failed to record payment:', error);
             alert(error.response?.data?.detail || 'Failed to record payment');
@@ -121,9 +134,11 @@ const InvoiceDetailPage = () => {
             await billingApi.returns.create(id, data);
             setShowReturnForm(false);
             await fetchData();
+            alert('Return created successfully!');
         } catch (error) {
             console.error('Failed to create return:', error);
-            alert(error.response?.data?.detail || 'Failed to create return');
+            const errorMsg = error.response?.data?.detail || error.response?.data?.message || 'Failed to create return';
+            alert(errorMsg);
         } finally {
             setFormLoading(false);
         }
@@ -180,18 +195,19 @@ const InvoiceDetailPage = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <Link to="/billing/invoices" className="text-sm text-primary-600 hover:text-primary-700">
                         ← Back to Invoices
                     </Link>
                     <h1 className="text-3xl font-bold text-neutral-900 mt-1">{invoice.bill_number}</h1>
-                    <div className="flex gap-2 mt-1">
+                    <div className="flex gap-2 mt-1 flex-wrap">
                         <InvoiceStatusBadge status={invoice.status} />
                         <PaymentStatusBadge status={invoice.payment_status} />
                     </div>
                 </div>
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-2 flex-wrap items-center">
                     <Button variant="secondary" onClick={handlePrint}>
                         Print
                     </Button>
@@ -204,9 +220,16 @@ const InvoiceDetailPage = () => {
                             <Button variant="secondary" onClick={() => setShowPaymentForm(true)}>
                                 Record Payment
                             </Button>
-                            <Button variant="secondary" onClick={() => setShowReturnForm(true)}>
-                                Create Return
-                            </Button>
+                            {!hasPendingReturn && (
+                                <Button variant="secondary" onClick={() => setShowReturnForm(true)}>
+                                    Create Return
+                                </Button>
+                            )}
+                            {hasPendingReturn && (
+                                <Badge variant="warning" className="ml-2">
+                                    Return Pending
+                                </Badge>
+                            )}
                         </>
                     )}
 
@@ -220,7 +243,7 @@ const InvoiceDetailPage = () => {
                                     Confirm
                                 </Button>
                             )}
-                            <Button variant="danger" onClick={handleDeleteInvoice}>
+                            <Button variant="danger" onClick={() => setShowDeleteConfirm(true)}>
                                 Delete
                             </Button>
                         </>
@@ -234,15 +257,15 @@ const InvoiceDetailPage = () => {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
                         <p className="text-sm text-neutral-500">Name</p>
-                        <p className="font-medium">{invoice.customer?.name}</p>
+                        <p className="font-medium">{invoice.customer?.name || 'N/A'}</p>
                     </div>
                     <div>
                         <p className="text-sm text-neutral-500">Code</p>
-                        <p className="font-medium">{invoice.customer?.code}</p>
+                        <p className="font-medium">{invoice.customer?.code || 'N/A'}</p>
                     </div>
                     <div>
                         <p className="text-sm text-neutral-500">Address</p>
-                        <p className="font-medium">{invoice.customer?.address}</p>
+                        <p className="font-medium">{invoice.customer?.address || 'N/A'}</p>
                     </div>
                     <div>
                         <p className="text-sm text-neutral-500">Mobile</p>
@@ -252,7 +275,7 @@ const InvoiceDetailPage = () => {
             </Card>
 
             {/* Payment Summary */}
-            {paymentSummary && (
+            {paymentSummary && invoice.status === 'confirmed' && (
                 <PaymentSummaryCard summary={paymentSummary} />
             )}
 
@@ -275,7 +298,7 @@ const InvoiceDetailPage = () => {
                         <tbody className="divide-y divide-neutral-100">
                             {invoice.items?.map((item, index) => (
                                 <tr key={item.id || index} className="hover:bg-neutral-50">
-                                    <td className="px-3 py-2 text-sm">{item.product_name}</td>
+                                    <td className="px-3 py-2 text-sm">{item.product_name || 'N/A'}</td>
                                     <td className="px-3 py-2 text-sm">{item.quantity}</td>
                                     <td className="px-3 py-2 text-sm">{item.discount || 0}</td>
                                     <td className="px-3 py-2 text-sm">{item.gst || 0}%</td>
@@ -319,7 +342,15 @@ const InvoiceDetailPage = () => {
                 </div>
             </Card>
 
-            {/* Payments Section */}
+            {/* Draft Preview - Only for draft invoices */}
+            {invoice.status === 'draft' && invoice.draft_preview && (
+                <div>
+                    <h3 className="font-semibold text-neutral-900 mb-3">Draft Preview (Estimated)</h3>
+                    <DraftPreviewPanel preview={invoice.draft_preview} />
+                </div>
+            )}
+
+            {/* Payments Section - Only for confirmed invoices */}
             {invoice.status === 'confirmed' && (
                 <Card className="p-6">
                     <h3 className="font-semibold text-neutral-900 mb-3">Payment History</h3>
@@ -331,7 +362,7 @@ const InvoiceDetailPage = () => {
                 </Card>
             )}
 
-            {/* Returns Section */}
+            {/* Returns Section - Only for confirmed invoices */}
             {invoice.status === 'confirmed' && (
                 <Card className="p-6">
                     <h3 className="font-semibold text-neutral-900 mb-3">Returns</h3>
@@ -343,15 +374,22 @@ const InvoiceDetailPage = () => {
                 </Card>
             )}
 
-            {/* Saved PDFs */}
+            {/* Saved PDFs - Only for confirmed invoices */}
             {invoice.status === 'confirmed' && pdfs.length > 0 && (
                 <Card className="p-6">
                     <h3 className="font-semibold text-neutral-900 mb-3">Saved PDFs</h3>
                     <div className="space-y-2">
                         {pdfs.map((pdf) => (
-                            <div key={pdf.id} className="flex justify-between items-center p-3 bg-neutral-50 rounded-lg">
+                            <div key={pdf.id} className="flex justify-between items-center p-3 bg-neutral-50 rounded-lg hover:bg-neutral-100 transition-colors">
                                 <div>
-                                    <p className="font-medium">{pdf.file_name}</p>
+                                    <a
+                                        href={pdf.file_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
+                                    >
+                                        {pdf.file_name}
+                                    </a>
                                     <p className="text-xs text-neutral-500">
                                         Saved: {new Date(pdf.created_at).toLocaleString()}
                                     </p>
@@ -406,6 +444,33 @@ const InvoiceDetailPage = () => {
                 loading={formLoading}
                 defaultFileName={invoice.bill_number}
             />
+
+            {/* Delete Confirmation Modal */}
+            <Modal
+                isOpen={showDeleteConfirm}
+                onClose={() => setShowDeleteConfirm(false)}
+                title="Delete Invoice"
+            >
+                <div className="space-y-4">
+                    <p className="text-neutral-600">
+                        Are you sure you want to delete this draft invoice? This action cannot be undone.
+                    </p>
+                    <div className="flex justify-end gap-3 pt-4">
+                        <Button
+                            variant="secondary"
+                            onClick={() => setShowDeleteConfirm(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="danger"
+                            onClick={handleDeleteInvoice}
+                        >
+                            Delete Invoice
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };

@@ -28,6 +28,10 @@ const ReturnForm = ({ onSubmit, onCancel, loading, orderItems }) => {
 
     const handleRemoveItem = (index) => {
         setItems(prev => prev.filter((_, i) => i !== index));
+        // Remove any errors for this item
+        const newErrors = { ...errors };
+        delete newErrors[`item_${index}`];
+        setErrors(newErrors);
     };
 
     const validate = () => {
@@ -39,7 +43,6 @@ const ReturnForm = ({ onSubmit, onCancel, loading, orderItems }) => {
             if (!item.quantity || item.quantity <= 0) {
                 newErrors[`item_${index}`] = 'Quantity must be greater than 0';
             }
-            // Check against returnable quantity
             const selectedItem = orderItems.find(i => i.id === parseInt(item.invoice_item_id));
             if (selectedItem && item.quantity > selectedItem.returnable_quantity) {
                 newErrors[`item_${index}`] = `Max returnable: ${selectedItem.returnable_quantity}`;
@@ -69,83 +72,100 @@ const ReturnForm = ({ onSubmit, onCancel, loading, orderItems }) => {
         return orderItems.filter(item => (item.returnable_quantity || 0) > 0);
     };
 
+    const hasReturnableItems = getReturnableItems().length > 0;
+
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-                <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-medium text-neutral-900">Items to Return</h4>
-                    <Button size="sm" onClick={handleAddItem}>
-                        Add Item
-                    </Button>
+            {!hasReturnableItems ? (
+                <div className="text-center py-4 text-neutral-500">
+                    No items available for return. All items have been fully returned.
                 </div>
+            ) : (
+                <>
+                    <div>
+                        <div className="flex items-center justify-between mb-3">
+                            <h4 className="font-medium text-neutral-900">Items to Return</h4>
+                            <Button size="sm" onClick={handleAddItem}>
+                                Add Item
+                            </Button>
+                        </div>
 
-                {items.length === 0 ? (
-                    <p className="text-center text-neutral-500 py-4">No items added yet</p>
-                ) : (
-                    <div className="space-y-2 max-h-60 overflow-y-auto">
-                        {items.map((item, index) => {
-                            const selectedItem = orderItems.find(i => i.id === parseInt(item.invoice_item_id));
-                            const returnableQty = selectedItem?.returnable_quantity || 0;
+                        {items.length === 0 ? (
+                            <div className="text-center py-8 bg-neutral-50 rounded-lg border border-dashed border-neutral-300">
+                                <p className="text-neutral-500">Click "Add Item" to start adding items to return</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-3 max-h-60 overflow-y-auto">
+                                {items.map((item, index) => {
+                                    const selectedItem = orderItems.find(i => i.id === parseInt(item.invoice_item_id));
+                                    const returnableQty = selectedItem?.returnable_quantity || 0;
 
-                            return (
-                                <div key={index} className="grid grid-cols-3 gap-2 p-3 bg-neutral-50 rounded-lg">
-                                    <Select
-                                        label="Product"
-                                        value={item.invoice_item_id}
-                                        onChange={(e) => handleUpdateItem(index, 'invoice_item_id', e.target.value)}
-                                        options={[
-                                            { value: '', label: 'Select item' },
-                                            ...getReturnableItems().map(i => ({
-                                                value: i.id,
-                                                label: `${i.product_name} (Returnable: ${i.returnable_quantity})`,
-                                            })),
-                                        ]}
-                                        required
-                                    />
-                                    <Input
-                                        label="Quantity"
-                                        type="number"
-                                        min="1"
-                                        max={returnableQty || undefined}
-                                        value={item.quantity}
-                                        onChange={(e) => handleUpdateItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                                        required
-                                    />
-                                    <div className="flex items-end">
-                                        <Button
-                                            size="sm"
-                                            variant="danger"
-                                            onClick={() => handleRemoveItem(index)}
-                                            className="w-full"
-                                        >
-                                            Remove
-                                        </Button>
-                                    </div>
-                                    {errors[`item_${index}`] && (
-                                        <p className="col-span-3 text-sm text-error-500">{errors[`item_${index}`]}</p>
-                                    )}
-                                </div>
-                            );
-                        })}
+                                    return (
+                                        <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 bg-neutral-50 rounded-lg border border-neutral-200">
+                                            <Select
+                                                label="Product"
+                                                value={item.invoice_item_id}
+                                                onChange={(e) => handleUpdateItem(index, 'invoice_item_id', e.target.value)}
+                                                options={[
+                                                    { value: '', label: 'Select item' },
+                                                    ...getReturnableItems().map(i => ({
+                                                        value: i.id,
+                                                        label: `${i.product_name} (Returnable: ${i.returnable_quantity})`,
+                                                    })),
+                                                ]}
+                                                required
+                                            />
+                                            <div>
+                                                <Input
+                                                    label="Quantity"
+                                                    type="number"
+                                                    min="1"
+                                                    max={returnableQty || undefined}
+                                                    value={item.quantity || ''}
+                                                    onChange={(e) => handleUpdateItem(index, 'quantity', e.target.value ? parseInt(e.target.value) : '')}
+                                                    required
+                                                />
+                                                {returnableQty > 0 && (
+                                                    <p className="text-xs text-neutral-500 mt-1">Max: {returnableQty}</p>
+                                                )}
+                                            </div>
+                                            <div className="flex items-end">
+                                                <Button
+                                                    size="sm"
+                                                    variant="danger"
+                                                    onClick={() => handleRemoveItem(index)}
+                                                    className="w-full"
+                                                >
+                                                    Remove
+                                                </Button>
+                                            </div>
+                                            {errors[`item_${index}`] && (
+                                                <p className="col-span-3 text-sm text-error-500 mt-1">{errors[`item_${index}`]}</p>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
-                )}
-            </div>
 
-            <Input
-                label="Note"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Return note (optional)"
-            />
+                    <Input
+                        label="Note (Optional)"
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="Reason for return..."
+                    />
 
-            <div className="flex justify-end gap-3 pt-4">
-                <Button type="button" variant="secondary" onClick={onCancel}>
-                    Cancel
-                </Button>
-                <Button type="submit" loading={loading}>
-                    Create Return
-                </Button>
-            </div>
+                    <div className="flex justify-end gap-3 pt-4 border-t border-neutral-200">
+                        <Button type="button" variant="secondary" onClick={onCancel}>
+                            Cancel
+                        </Button>
+                        <Button type="submit" loading={loading} disabled={items.length === 0}>
+                            Create Return
+                        </Button>
+                    </div>
+                </>
+            )}
         </form>
     );
 };

@@ -24,50 +24,68 @@ const ReturnList = ({ returns, onAccept, isAdmin }) => {
         <div className="space-y-3">
             {returns.map((returnItem, index) => (
                 <motion.div
-                    key={returnItem.id}
+                    key={returnItem.id || index}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
                     className="p-4 bg-neutral-50 rounded-lg hover:bg-neutral-100 transition-colors"
                 >
                     <div className="flex justify-between items-start">
-                        <div>
-                            <p className="font-medium">{returnItem.reference_number}</p>
+                        <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-1">
+                                <p className="font-medium">{returnItem.reference_number}</p>
+                                {getStatusBadge(returnItem.status)}
+                            </div>
                             <p className="text-sm text-neutral-500">
-                                {new Date(returnItem.created_at).toLocaleString()}
+                                Created: {returnItem.created_at ? new Date(returnItem.created_at).toLocaleString() : 'N/A'}
                             </p>
                             {returnItem.note && (
                                 <p className="text-sm text-neutral-600 mt-1">{returnItem.note}</p>
                             )}
                             {returnItem.items && returnItem.items.length > 0 && (
-                                <div className="mt-2 text-sm">
-                                    <p className="text-neutral-500">Items:</p>
-                                    {returnItem.items.map((item, idx) => (
-                                        <p key={idx} className="text-neutral-600">
-                                            {item.product_name} × {item.quantity}
-                                        </p>
-                                    ))}
+                                <div className="mt-2">
+                                    <p className="text-sm text-neutral-500">Items:</p>
+                                    <div className="mt-1 space-y-1">
+                                        {returnItem.items.map((item, idx) => (
+                                            <div key={item.id || idx} className="text-sm flex justify-between items-center bg-white p-2 rounded-lg">
+                                                <span className="text-neutral-700">{item.product_name}</span>
+                                                <span className="text-neutral-600">× {item.quantity}</span>
+                                                <span className="font-medium text-primary-600">
+                                                    {item.total_amount ? parseFloat(item.total_amount).toFixed(2) : '0.00'}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            {returnItem.total_return_amount && (
+                                <div className="mt-2 pt-2 border-t border-neutral-200">
+                                    <span className="text-sm text-neutral-500">Total Return Amount: </span>
+                                    <span className="font-medium text-primary-600">
+                                        {parseFloat(returnItem.total_return_amount).toFixed(2)}
+                                    </span>
                                 </div>
                             )}
                         </div>
                         <div className="text-right">
-                            <div className="mb-1">{getStatusBadge(returnItem.status)}</div>
-                            {returnItem.total_return_amount && (
-                                <p className="font-medium text-primary-600">
-                                    {typeof returnItem.total_return_amount === 'string'
-                                        ? parseFloat(returnItem.total_return_amount).toFixed(2)
-                                        : '0.00'}
-                                </p>
-                            )}
                             {returnItem.status === 'pending' && isAdmin && (
                                 <Button
                                     size="sm"
                                     variant="success"
                                     onClick={() => onAccept(returnItem.id)}
-                                    className="mt-2"
                                 >
                                     Accept Return
                                 </Button>
+                            )}
+                            {returnItem.accepted_at && (
+                                <p className="text-xs text-neutral-400 mt-2">
+                                    Accepted: {new Date(returnItem.accepted_at).toLocaleString()}
+                                </p>
+                            )}
+                            {returnItem.accepted_by && (
+                                <p className="text-xs text-neutral-400">
+                                    By: {returnItem.accepted_by}
+                                </p>
                             )}
                         </div>
                     </div>

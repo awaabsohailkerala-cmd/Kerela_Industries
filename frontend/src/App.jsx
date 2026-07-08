@@ -26,10 +26,11 @@ import PriceHistoryPage from './pages/rates/PriceHistoryPage';
 
 // Billing pages
 import CustomersPage from './pages/billing/CustomersPage';
-import CustomerDetailPage from './pages/billing/CustomerDetailPage'; // Add this import
+import CustomerDetailPage from './pages/billing/CustomerDetailPage';
 import CustomerOutstandingPage from './pages/billing/CustomerOutstandingPage';
 import InvoicesPage from './pages/billing/InvoicesPage';
 import CreateInvoicePage from './pages/billing/CreateInvoicePage';
+import EditInvoicePage from './pages/billing/EditInvoicePage'; // Add this import
 import InvoiceDetailPage from './pages/billing/InvoiceDetailPage';
 import BillingPaymentsPage from "./pages/billing/PaymentsPage";
 import OutstandingInvoicesPage from './pages/billing/OutstandingInvoicesPage';
@@ -259,7 +260,7 @@ const AppContent = () => {
         <Route path="/billing/invoices/:id/edit" element={
           <ProtectedRoute>
             <Layout>
-              <CreateInvoicePage />
+              <EditInvoicePage />
             </Layout>
           </ProtectedRoute>
         } />

@@ -5,16 +5,33 @@ import Badge from '../ui/Badge';
 
 const DraftPreviewPanel = ({ preview }) => {
     if (!preview) {
-        return (
-            <Card className="p-6">
-                <p className="text-center text-neutral-500">No preview available</p>
-            </Card>
-        );
+        return null;
     }
+
+    // Extract values from preview
+    const items = preview.items || [];
+    const subtotal = parseFloat(preview.subtotal) || 0;
+    const totalCogs = parseFloat(preview.total_cogs) || 0;
+    const grossProfit = parseFloat(preview.gross_profit) || 0;
+
+    // Calculate GST and WHT totals if not provided
+    const gstTotal = items.reduce((sum, item) => {
+        const lineTotal = parseFloat(item.line_total) || 0;
+        const gst = parseFloat(item.gst) || 0;
+        return sum + (lineTotal * gst / 100);
+    }, 0);
+
+    const whtTotal = items.reduce((sum, item) => {
+        const lineTotal = parseFloat(item.line_total) || 0;
+        const wht = parseFloat(item.wht) || 0;
+        return sum + (lineTotal * wht / 100);
+    }, 0);
+
+    const grandTotal = subtotal + gstTotal - whtTotal;
 
     return (
         <Card className="p-6">
-            <h3 className="font-semibold text-neutral-900 mb-4">Draft Preview</h3>
+            <h3 className="font-semibold text-neutral-900 mb-4">Draft Preview (Estimated)</h3>
 
             {preview.warnings && (preview.warnings.missing_rate || preview.warnings.missing_stock) && (
                 <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
@@ -29,7 +46,7 @@ const DraftPreviewPanel = ({ preview }) => {
             )}
 
             <div className="space-y-2 max-h-60 overflow-y-auto">
-                {preview.items?.map((item, index) => (
+                {items.map((item, index) => (
                     <motion.div
                         key={index}
                         initial={{ opacity: 0 }}
@@ -46,9 +63,17 @@ const DraftPreviewPanel = ({ preview }) => {
                                 <Badge variant="error" className="ml-2">Low Stock</Badge>
                             )}
                         </div>
-                        <span className="font-medium">
-                            {item.line_total ? `$${parseFloat(item.line_total).toFixed(2)}` : 'N/A'}
-                        </span>
+                        <div className="text-right">
+                            <span className="font-medium">
+                                {item.line_total ? parseFloat(item.line_total).toFixed(2) : '0.00'}
+                            </span>
+                            {item.cogs_per_unit && (
+                                <p className="text-xs text-neutral-400">
+                                    COGS: {parseFloat(item.line_cogs || 0).toFixed(2)} |
+                                    Profit: {parseFloat(item.line_profit || 0).toFixed(2)}
+                                </p>
+                            )}
+                        </div>
                     </motion.div>
                 ))}
             </div>
@@ -56,32 +81,32 @@ const DraftPreviewPanel = ({ preview }) => {
             <div className="mt-4 pt-4 border-t border-neutral-200 space-y-1">
                 <div className="flex justify-between text-sm">
                     <span className="text-neutral-500">Subtotal</span>
-                    <span className="font-medium">${preview.subtotal || '0.00'}</span>
+                    <span className="font-medium">{subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                     <span className="text-neutral-500">GST Total</span>
-                    <span className="font-medium">${preview.gst_total || '0.00'}</span>
+                    <span className="font-medium">{gstTotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                     <span className="text-neutral-500">WHT Total</span>
-                    <span className="font-medium">${preview.wht_total || '0.00'}</span>
+                    <span className="font-medium">{whtTotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-lg font-bold pt-2 border-t border-neutral-200">
                     <span>Grand Total</span>
-                    <span className="text-primary-600">${preview.grand_total || '0.00'}</span>
+                    <span className="text-primary-600">{grandTotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm pt-1">
                     <span className="text-neutral-500">Total COGS</span>
-                    <span className="font-medium">${preview.total_cogs || '0.00'}</span>
+                    <span className="font-medium">{totalCogs.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                     <span className="text-neutral-500">Gross Profit</span>
-                    <span className="font-medium text-success-600">${preview.gross_profit || '0.00'}</span>
+                    <span className="font-medium text-success-600">{grossProfit.toFixed(2)}</span>
                 </div>
             </div>
 
             <p className="text-xs text-neutral-400 mt-4 italic">
-                Preview only — no stock reserved, no prices committed. Confirm to finalise.
+                {preview.note || 'Preview only — no stock reserved, no prices committed. Confirm to finalise.'}
             </p>
         </Card>
     );
@@ -91,15 +116,13 @@ DraftPreviewPanel.propTypes = {
     preview: PropTypes.shape({
         items: PropTypes.array,
         subtotal: PropTypes.string,
-        gst_total: PropTypes.string,
-        wht_total: PropTypes.string,
-        grand_total: PropTypes.string,
         total_cogs: PropTypes.string,
         gross_profit: PropTypes.string,
         warnings: PropTypes.shape({
             missing_rate: PropTypes.bool,
             missing_stock: PropTypes.bool,
         }),
+        note: PropTypes.string,
     }),
 };
 
