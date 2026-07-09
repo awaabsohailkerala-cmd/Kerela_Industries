@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import PropTypes from 'prop-types';
 import Input from '../ui/Input';
-import Select from '../ui/Select';
+import SearchableSelect from '../ui/SearchableSelect';
 import Button from '../ui/Button';
 
 const LineItemRow = ({
@@ -38,12 +38,12 @@ const LineItemRow = ({
             {/* Row 1: Product and Quantity */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
                 <div className="col-span-1 md:col-span-3">
-                    <Select
+                    <SearchableSelect
                         label="Product"
                         value={item.product_id || ''}
-                        onChange={(e) => onUpdate(index, 'product_id', parseInt(e.target.value))}
+                        onChange={(value) => onUpdate(index, 'product_id', parseInt(value))}
                         options={productOptions}
-                        placeholder="Select product"
+                        placeholder="Search product by name or code"
                         disabled={!canEdit}
                         required
                     />

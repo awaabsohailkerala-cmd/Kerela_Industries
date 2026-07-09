@@ -213,9 +213,12 @@ const PurchaseOrderDetailPage = () => {
                     </div>
                 </div>
                 <div className="flex gap-2 flex-wrap items-center">
-                    <Button variant="secondary" onClick={handlePrint}>
-                        Print
-                    </Button>
+                    {/* Print button hidden while order is draft */}
+                    {order.status !== 'draft' && (
+                        <Button variant="secondary" onClick={handlePrint}>
+                            Print
+                        </Button>
+                    )}
 
                     {order.status === 'confirmed' && (
                         <>

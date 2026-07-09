@@ -517,14 +517,25 @@ class PurchaseReturnAcceptView(APIView):
 
 class PurchaseOrderPrintView(APIView):
     """
-    GET /purchases/orders/<pk>/print/
-    Streams PDF — nothing saved. Confirmed orders only.
-    Admin/superuser only.
+    GET /purchases/orders/<pk>/print/?is_draft=true|false
+
+    Streams the PDF directly to the client — nothing saved to disk.
+    - is_draft=true  → shows DRAFT watermark (all authenticated users)
+    - is_draft=false → clean order (admin/superuser only)
     """
-    permission_classes = [IsAdminOrSuperuser]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-        pdf_bytes, filename = generate_purchase_order_pdf_bytes(order_id=pk)
+        is_draft_param = request.query_params.get("is_draft", "false").lower() == "true"
+
+        # Normal users can ONLY print the draft-watermarked version
+        if not is_draft_param and not request.user.is_staff:
+            return Response(
+                {"detail": "Normal users can only print the draft version."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        pdf_bytes, filename = generate_purchase_order_pdf_bytes(order_id=pk, is_draft=is_draft_param)
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         response["Content-Disposition"] = f'inline; filename="{filename}"'
         return response

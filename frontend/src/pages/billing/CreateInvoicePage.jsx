@@ -4,9 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { billingApi } from '../../services/billingApi';
 import { purchasesApi } from '../../services/purchasesApi';
+import { ratesApi } from '../../services/ratesApi';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import Select from '../../components/ui/Select';
+import SearchableSelect from '../../components/ui/SearchableSelect';
 import Card from '../../components/ui/Card';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import LineItemRow from '../../components/billing/LineItemRow';
@@ -30,12 +31,24 @@ const CreateInvoicePage = () => {
     const loadInitialData = async () => {
         setLoading(true);
         try {
-            const [customersData, productsData] = await Promise.all([
+            const [customersData, productsData, ratesData] = await Promise.all([
                 billingApi.customers.getAll(),
                 purchasesApi.products.getAll(),
+                ratesApi.getAll(),
             ]);
+            const rateByProductId = {};
+            (ratesData || []).forEach(rate => {
+                if (rate.product?.id) {
+                    rateByProductId[rate.product.id] = rate;
+                }
+            });
+            const productsWithRates = (productsData || []).map(product => ({
+                ...product,
+                rate: rateByProductId[product.id] || null,
+            }));
+
             setCustomers(customersData || []);
-            setProducts(productsData || []);
+            setProducts(productsWithRates);
         } catch (error) {
             console.error('Failed to load initial data:', error);
         } finally {
@@ -166,14 +179,12 @@ const CreateInvoicePage = () => {
             <form onSubmit={handleSubmit} className="space-y-6">
                 <Card className="p-6">
                     <div className="max-w-md">
-                        <Select
+                        <SearchableSelect
                             label="Customer"
                             value={formData.customer_id}
-                            onChange={(e) => setFormData(prev => ({ ...prev, customer_id: e.target.value }))}
-                            options={[
-                                { value: '', label: 'Select customer' },
-                                ...customers.map(c => ({ value: c.id, label: `${c.code} - ${c.name}` })),
-                            ]}
+                            onChange={(value) => setFormData(prev => ({ ...prev, customer_id: value }))}
+                            options={customers.map(c => ({ value: c.id, label: `${c.code} - ${c.name}` }))}
+                            placeholder="Search customer by name or code"
                             required
                         />
                     </div>

@@ -92,16 +92,6 @@ const InvoiceTable = ({
                                     Confirm
                                 </Button>
                             )}
-                            <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onPrint(row.id, true);
-                                }}
-                            >
-                                Print Draft
-                            </Button>
                         </>
                     )}
                     {row.status !== 'draft' && (

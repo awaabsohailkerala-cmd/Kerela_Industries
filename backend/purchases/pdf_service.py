@@ -34,7 +34,7 @@ def _build_item_context(order: PurchaseOrder) -> list[dict]:
     return items
 
 
-def _render_order_html(order: PurchaseOrder) -> str:
+def _render_order_html(order: PurchaseOrder, is_draft: bool = False) -> str:
     order_date = (
         order.confirmed_at.strftime("%d %b %Y")
         if order.confirmed_at
@@ -44,6 +44,7 @@ def _render_order_html(order: PurchaseOrder) -> str:
         "order"       : order,
         "items"       : _build_item_context(order),
         "order_date"  : order_date,
+        "is_draft"    : is_draft,
         "generated_at": timezone.now().strftime("%d %b %Y %H:%M"),
     }
     return render_to_string("purchases/purchase_order_pdf.html", context)
@@ -54,18 +55,15 @@ def _html_to_pdf_bytes(html: str) -> bytes:
     return HTML(string=html, base_url=str(settings.MEDIA_ROOT)).write_pdf()
 
 
-def generate_purchase_order_pdf_bytes(*, order_id: int) -> tuple[bytes, str]:
+def generate_purchase_order_pdf_bytes(*, order_id: int, is_draft: bool = False) -> tuple[bytes, str]:
     """
     Streams PDF — nothing saved to disk.
-    Only confirmed orders can be printed.
+    Draft orders can be printed with a DRAFT watermark; confirmed orders print clean.
     """
-    from rest_framework.exceptions import ValidationError
-    order = get_purchase_order_by_id(order_id)
-    if order.status == PurchaseOrder.Status.DRAFT:
-        raise ValidationError({"order": "Only confirmed purchase orders can be printed."})
-    html     = _render_order_html(order)
+    order    = get_purchase_order_by_id(order_id)
+    html     = _render_order_html(order, is_draft=is_draft)
     pdf      = _html_to_pdf_bytes(html)
-    filename = f"{order.order_number}.pdf"
+    filename = f"{order.order_number}{'_DRAFT' if is_draft else ''}.pdf"
     return pdf, filename
 
 

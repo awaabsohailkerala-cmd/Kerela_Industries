@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { billingApi } from '../../services/billingApi';
 import { purchasesApi } from '../../services/purchasesApi';
+import { ratesApi } from '../../services/ratesApi';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import Select from '../../components/ui/Select';
+import SearchableSelect from '../../components/ui/SearchableSelect';
 import Card from '../../components/ui/Card';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import LineItemRow from '../../components/billing/LineItemRow';
@@ -34,15 +35,27 @@ const EditInvoicePage = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [invoiceData, customersData, productsData] = await Promise.all([
+            const [invoiceData, customersData, productsData, ratesData] = await Promise.all([
                 billingApi.invoices.getById(id),
                 billingApi.customers.getAll(),
                 purchasesApi.products.getAll(),
+                ratesApi.getAll(),
             ]);
+
+            const rateByProductId = {};
+            (ratesData || []).forEach(rate => {
+                if (rate.product?.id) {
+                    rateByProductId[rate.product.id] = rate;
+                }
+            });
+            const productsWithRates = (productsData || []).map(product => ({
+                ...product,
+                rate: rateByProductId[product.id] || null,
+            }));
 
             setInvoice(invoiceData);
             setCustomers(customersData || []);
-            setProducts(productsData || []);
+            setProducts(productsWithRates);
 
             // Populate form data
             setFormData({
@@ -171,14 +184,11 @@ const EditInvoicePage = () => {
             <form onSubmit={handleSubmit} className="space-y-6">
                 <Card className="p-6">
                     <div className="max-w-md">
-                        <Select
+                        <SearchableSelect
                             label="Customer"
                             value={formData.customer_id}
-                            onChange={(e) => setFormData(prev => ({ ...prev, customer_id: e.target.value }))}
-                            options={[
-                                { value: '', label: 'Select customer' },
-                                ...customers.map(c => ({ value: c.id, label: `${c.code} - ${c.name}` })),
-                            ]}
+                            onChange={(value) => setFormData(prev => ({ ...prev, customer_id: value }))}
+                            options={customers.map(c => ({ value: c.id, label: `${c.code} - ${c.name}` }))}
                             disabled={true}
                             required
                         />

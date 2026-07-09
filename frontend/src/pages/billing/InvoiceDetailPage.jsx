@@ -237,9 +237,12 @@ const InvoiceDetailPage = () => {
                     </div>
                 </div>
                 <div className="flex gap-2 flex-wrap items-center">
-                    <Button variant="secondary" onClick={handlePrint}>
-                        Print
-                    </Button>
+                    {/* Print button hidden while invoice is draft */}
+                    {invoice.status !== 'draft' && (
+                        <Button variant="secondary" onClick={handlePrint}>
+                            Print
+                        </Button>
+                    )}
 
                     {invoice.status !== 'draft' && isAdmin && (
                         <>
