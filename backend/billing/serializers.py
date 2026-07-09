@@ -167,6 +167,19 @@ class InvoiceItemWriteSerializer(serializers.Serializer):
     """Used inside invoice create/update — not a standalone endpoint."""
     product_id = serializers.IntegerField()
     quantity   = serializers.IntegerField(min_value=1)
+    discount   = serializers.DecimalField(max_digits=10, decimal_places=4, default=0, required=False)
+    gst        = serializers.DecimalField(max_digits=5, decimal_places=2, default=0, required=False)
+    wht        = serializers.DecimalField(max_digits=5, decimal_places=2, default=0, required=False)
+
+    def validate_gst(self, value):
+        if value < 0 or value > 100:
+            raise serializers.ValidationError("GST must be between 0 and 100.")
+        return value
+
+    def validate_wht(self, value):
+        if value < 0 or value > 100:
+            raise serializers.ValidationError("WHT must be between 0 and 100.")
+        return value
 
 
 # ---------------------------------------------------------------------------
