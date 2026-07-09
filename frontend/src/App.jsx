@@ -54,6 +54,11 @@ import LedgerListPage from './pages/ledger/LedgerListPage';
 import LedgerDetailPage from './pages/ledger/LedgerDetailPage';
 import LedgerBySupplierPage from './pages/ledger/LedgerBySupplierPage';
 
+// Reports pages
+import ReportsHomePage from './pages/reports/ReportsHomePage';
+import InvoicesReportPage from './pages/reports/InvoicesReportPage';
+import CashCollectedReportPage from './pages/reports/CashCollectedReportPage';
+
 import './App.css';
 
 const AppContent = () => {
@@ -390,6 +395,30 @@ const AppContent = () => {
           <ProtectedRoute>
             <Layout>
               <LedgerBySupplierPage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/reports" element={
+          <ProtectedRoute>
+            <Layout>
+              <ReportsHomePage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/reports/invoices" element={
+          <ProtectedRoute>
+            <Layout>
+              <InvoicesReportPage />
+            </Layout>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/reports/cash-collected" element={
+          <ProtectedRoute>
+            <Layout>
+              <CashCollectedReportPage />
             </Layout>
           </ProtectedRoute>
         } />

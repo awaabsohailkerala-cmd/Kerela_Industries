@@ -11,6 +11,9 @@ const Layout = ({ children }) => {
     const [purchasesOpen, setPurchasesOpen] = useState(false);
     const [billingOpen, setBillingOpen] = useState(false);
     const [expensesOpen, setExpensesOpen] = useState(false); // Add this state
+    const [reportsOpen, setReportsOpen] = useState(false);
+
+    const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
 
     // Check if any purchases sub-item is active
     const isPurchasesActive = () => {
@@ -50,6 +53,14 @@ const Layout = ({ children }) => {
         return expensesPaths.some(path => location.pathname.startsWith(path));
     };
 
+    // Check if any reports sub-item is active
+    const isReportsActive = () => {
+        const reportsPaths = [
+            '/reports',
+        ];
+        return reportsPaths.some(path => location.pathname.startsWith(path));
+    };
+
     const mainNavigation = [
         { name: 'Dashboard', path: '/dashboard', icon: '📊' },
         { name: 'Users', path: '/users', icon: '👥' },
@@ -84,10 +95,16 @@ const Layout = ({ children }) => {
         { name: 'All Expenses', path: '/expenses', icon: '📋' },
     ];
 
+    const reportsNavigation = [
+        { name: 'Invoices Report', path: '/reports/invoices', icon: '🧾' },
+        { name: 'Cash Collected Report', path: '/reports/cash-collected', icon: '💵' },
+    ];
+
     const isActive = (path) => location.pathname === path;
     const isPurchasesActiveNow = isPurchasesActive();
     const isBillingActiveNow = isBillingActive();
     const isExpensesActiveNow = isExpensesActive();
+    const isReportsActiveNow = isReportsActive();
 
     return (
         <div className="min-h-screen bg-neutral-50">
@@ -360,6 +377,81 @@ const Layout = ({ children }) => {
                                 </div>
                             )}
                         </div>
+
+                        {/* Reports Section — admin/superuser only */}
+                        {isAdmin && (
+                            <div className="mt-2 pt-2 border-t border-neutral-200">
+                                <button
+                                    onClick={() => setReportsOpen(!reportsOpen)}
+                                    className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isReportsActiveNow
+                                        ? 'bg-primary-50 text-primary-700'
+                                        : 'text-neutral-600 hover:bg-neutral-100'
+                                        }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-xl">📈</span>
+                                        {sidebarOpen && (
+                                            <span className="font-medium">Reports</span>
+                                        )}
+                                    </div>
+                                    {sidebarOpen && (
+                                        <motion.span
+                                            animate={{ rotate: reportsOpen ? 180 : 0 }}
+                                            transition={{ duration: 0.2 }}
+                                            className="text-sm"
+                                        >
+                                            ▼
+                                        </motion.span>
+                                    )}
+                                </button>
+
+                                {/* Reports Sub-items */}
+                                <AnimatePresence>
+                                    {reportsOpen && sidebarOpen && (
+                                        <motion.div
+                                            initial={{ opacity: 0, height: 0 }}
+                                            animate={{ opacity: 1, height: 'auto' }}
+                                            exit={{ opacity: 0, height: 0 }}
+                                            transition={{ duration: 0.2 }}
+                                            className="ml-4 space-y-1 overflow-hidden"
+                                        >
+                                            {reportsNavigation.map((item) => (
+                                                <Link
+                                                    key={item.path}
+                                                    to={item.path}
+                                                    className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 text-sm ${isActive(item.path)
+                                                        ? 'bg-primary-50 text-primary-700'
+                                                        : 'text-neutral-600 hover:bg-neutral-100'
+                                                        }`}
+                                                >
+                                                    <span className="text-base">{item.icon}</span>
+                                                    <span className="font-medium">{item.name}</span>
+                                                </Link>
+                                            ))}
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+
+                                {/* When sidebar is collapsed, show reports as icons */}
+                                {!sidebarOpen && (
+                                    <div className="mt-1 space-y-1">
+                                        {reportsNavigation.map((item) => (
+                                            <Link
+                                                key={item.path}
+                                                to={item.path}
+                                                className={`flex items-center justify-center px-4 py-3 rounded-xl transition-all duration-200 ${isActive(item.path)
+                                                    ? 'bg-primary-50 text-primary-700'
+                                                    : 'text-neutral-600 hover:bg-neutral-100'
+                                                    }`}
+                                                title={item.name}
+                                            >
+                                                <span className="text-xl">{item.icon}</span>
+                                            </Link>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </nav>
 
                     {/* User Info */}
