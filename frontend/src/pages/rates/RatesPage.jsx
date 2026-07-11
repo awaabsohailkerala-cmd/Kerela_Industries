@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { useRates } from '../../hooks/useRates';
-import { purchasesApi } from '../../services/purchasesApi';
 import RateTable from '../../components/rates/RateTable';
 import RateFormModal from '../../components/rates/RateFormModal';
 import SearchBar from '../../components/ui/SearchBar';
@@ -17,7 +16,6 @@ const RatesPage = () => {
     const navigate = useNavigate();
 
     const { data, loading, filters, setFilters, create, update, refetch } = useRates();
-    const [categories, setCategories] = useState([]);
 
     // Modal state
     const [showModal, setShowModal] = useState(false);
@@ -25,20 +23,14 @@ const RatesPage = () => {
     const [selectedRate, setSelectedRate] = useState(null);
     const [formLoading, setFormLoading] = useState(false);
 
-    useEffect(() => {
-        loadLookups();
-    }, []);
-
-    const loadLookups = async () => {
-        try {
-            const [cats] = await Promise.all([
-                purchasesApi.categories.getAll(),
-            ]);
-            setCategories(cats.filter(c => !c.is_deleted));
-        } catch (error) {
-            console.error('Failed to load lookups:', error);
-        }
-    };
+    // Category filter options are derived from the rate list itself —
+    // normal users have no Purchases app access to fetch categories directly.
+    const categories = [...new Map(
+        data
+            .map(item => item.product?.category)
+            .filter(Boolean)
+            .map(category => [category.id, category])
+    ).values()];
 
     const handleSearch = (value) => {
         setFilters(prev => ({ ...prev, search: value }));

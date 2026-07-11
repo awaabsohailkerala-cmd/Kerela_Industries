@@ -31,16 +31,26 @@ const NormalUserDashboard = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [inventoryData, ratesData, categoriesData, shelvesData] = await Promise.all([
+            // Normal users have no Purchases app access, so category/shelf
+            // filter options are derived from the inventory itself rather
+            // than calling purchasesApi.categories/shelves (admin-only).
+            const [inventoryData, ratesData] = await Promise.all([
                 purchasesApi.inventory.getAll(),
                 ratesApi.getAll(),
-                purchasesApi.categories.getAll(),
-                purchasesApi.shelves.getAll(),
             ]);
             setInventory(inventoryData || []);
             setRates(ratesData || []);
-            setCategories(categoriesData.filter(c => !c.is_deleted) || []);
-            setShelves(shelvesData.filter(s => !s.is_deleted) || []);
+
+            const categoryMap = new Map();
+            const shelfMap = new Map();
+            (inventoryData || []).forEach(item => {
+                const category = item.product?.category;
+                const shelf = item.product?.shelf;
+                if (category?.id) categoryMap.set(category.id, category);
+                if (shelf?.id) shelfMap.set(shelf.id, shelf);
+            });
+            setCategories([...categoryMap.values()]);
+            setShelves([...shelfMap.values()]);
         } catch (error) {
             console.error('Failed to load data:', error);
         } finally {

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { billingApi } from '../../services/billingApi';
-import { purchasesApi } from '../../services/purchasesApi';
 import { ratesApi } from '../../services/ratesApi';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
@@ -35,23 +34,18 @@ const EditInvoicePage = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [invoiceData, customersData, productsData, ratesData] = await Promise.all([
+            // Products come from the rate list, not the Purchases app — normal
+            // users have no Purchases access, but rates are viewable by everyone,
+            // and every rate already carries its product + selling price.
+            const [invoiceData, customersData, ratesData] = await Promise.all([
                 billingApi.invoices.getById(id),
                 billingApi.customers.getAll(),
-                purchasesApi.products.getAll(),
                 ratesApi.getAll(),
             ]);
 
-            const rateByProductId = {};
-            (ratesData || []).forEach(rate => {
-                if (rate.product?.id) {
-                    rateByProductId[rate.product.id] = rate;
-                }
-            });
-            const productsWithRates = (productsData || []).map(product => ({
-                ...product,
-                rate: rateByProductId[product.id] || null,
-            }));
+            const productsWithRates = (ratesData || [])
+                .filter(rate => rate.product?.id)
+                .map(rate => ({ ...rate.product, rate }));
 
             setInvoice(invoiceData);
             setCustomers(customersData || []);

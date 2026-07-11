@@ -88,11 +88,12 @@ const Layout = ({ children }) => {
     const billingNavigation = [
         { name: 'Customers', path: '/billing/customers', icon: '👤' },
         { name: 'Invoices', path: '/billing/invoices', icon: '📄' },
-        { name: 'Payments', path: '/billing/payments', icon: '💰' },
         { name: 'Returns', path: '/billing/returns', icon: '↩️' },
-        { name: 'Invoices Outstanding', path: '/billing/invoices/outstanding', icon: '📊' },
-        { name: 'Customer Outstanding', path: '/billing/customers/outstanding', icon: '📈' },
-    ];
+        // Hidden from normal users, still visible to admin/superuser
+        { name: 'Payments', path: '/billing/payments', icon: '💰', adminOnly: true },
+        { name: 'Invoices Outstanding', path: '/billing/invoices/outstanding', icon: '📊', adminOnly: true },
+        { name: 'Customer Outstanding', path: '/billing/customers/outstanding', icon: '📈', adminOnly: true },
+    ].filter(item => !item.adminOnly || isAdmin);
 
     const expensesNavigation = [
         { name: 'Categories', path: '/expenses/categories', icon: '📂' },

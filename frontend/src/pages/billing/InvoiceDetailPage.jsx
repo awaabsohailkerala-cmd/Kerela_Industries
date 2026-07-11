@@ -382,8 +382,8 @@ const InvoiceDetailPage = () => {
                 </div>
             )}
 
-            {/* Payments Section - Only for confirmed invoices */}
-            {invoice.status !== 'draft' && (
+            {/* Payments Section - Only for confirmed invoices, hidden from normal users */}
+            {invoice.status !== 'draft' && isAdmin && (
                 <Card className="p-6">
                     <h3 className="font-semibold text-neutral-900 mb-3">Payment History</h3>
                     <PaymentHistoryList
