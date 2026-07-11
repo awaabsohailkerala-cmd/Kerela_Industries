@@ -39,19 +39,6 @@ def _invoice_qs():
     )
 
 
-def get_all_invoices(*, status: str = None, customer_id: int = None) -> QuerySet:
-    qs = _invoice_qs().filter(is_deleted=False)
-    if status:
-        qs = qs.filter(status=status)
-    if customer_id:
-        qs = qs.filter(customer_id=customer_id)
-    return qs
-
-
-def get_draft_invoices() -> QuerySet:
-    return _invoice_qs().filter(is_deleted=False, status=Invoice.Status.DRAFT)
-
-
 def get_invoice_by_id(pk: int) -> Invoice:
     return get_object_or_404(_invoice_qs(), pk=pk, is_deleted=False)
 
@@ -317,6 +304,7 @@ def _clean(value):
 def get_filtered_invoices(
     *,
     status         : str  = None,
+    customer_id    : int  = None,
     customer_name  : str  = None,
     customer_code  : str  = None,
     bill_number    : str  = None,
@@ -336,6 +324,8 @@ def get_filtered_invoices(
 
     if _clean(status):
         qs = qs.filter(status=_clean(status))
+    if _clean(customer_id):
+        qs = qs.filter(customer_id=_clean(customer_id))
     if _clean(customer_name):
         qs = qs.filter(customer__name__icontains=_clean(customer_name))
     if _clean(customer_code):

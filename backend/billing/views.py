@@ -5,9 +5,8 @@ from .models import Invoice
 from .permissions import IsAdminOrSuperuser, IsAdminOrSuperuserOrReadOnly, IsAuthenticated
 from .selectors import (
     get_all_customers,
-    get_all_invoices,
     get_customer_by_id,
-    get_draft_invoices,
+    get_filtered_invoices,
     get_invoice_by_id,
     get_payment_by_id,
     get_payments_for_invoice,
@@ -102,7 +101,8 @@ class CustomerRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
 
 class InvoiceListCreateView(generics.ListCreateAPIView):
     """
-    GET  /billing/invoices/         — all invoices (?status=draft|confirmed|returned|partial, ?customer_id=)
+    GET  /billing/invoices/         — all invoices, full filter set (see get_filtered_invoices)
+                                       plus ?customer_id= for an exact-match lookup
     POST /billing/invoices/         — create draft (all authenticated)
     """
     permission_classes = [IsAuthenticated]
@@ -111,9 +111,19 @@ class InvoiceListCreateView(generics.ListCreateAPIView):
         return InvoiceCreateSerializer if self.request.method == "POST" else InvoiceReadSerializer
 
     def get_queryset(self):
-        return get_all_invoices(
-            status=self.request.query_params.get("status"),
-            customer_id=self.request.query_params.get("customer_id"),
+        p = self.request.query_params
+        return get_filtered_invoices(
+            status         = p.get("status"),
+            customer_id    = p.get("customer_id"),
+            customer_name  = p.get("customer_name"),
+            customer_code  = p.get("customer_code"),
+            bill_number    = p.get("bill_number"),
+            date           = p.get("date"),
+            date_from      = p.get("date_from"),
+            date_to        = p.get("date_to"),
+            payment_status = p.get("payment_status"),
+            min_amount     = p.get("min_amount"),
+            max_amount     = p.get("max_amount"),
         )
 
     def create(self, request, *args, **kwargs):
@@ -134,13 +144,26 @@ class InvoiceListCreateView(generics.ListCreateAPIView):
 
 class DraftInvoiceListView(generics.ListAPIView):
     """
-    GET /billing/invoices/drafts/   — all draft invoices (all authenticated)
+    GET /billing/invoices/drafts/   — draft invoices, full filter set (see get_filtered_invoices)
     """
     permission_classes = [IsAuthenticated]
     serializer_class = InvoiceReadSerializer
 
     def get_queryset(self):
-        return get_draft_invoices()
+        p = self.request.query_params
+        return get_filtered_invoices(
+            status         = Invoice.Status.DRAFT,
+            customer_id    = p.get("customer_id"),
+            customer_name  = p.get("customer_name"),
+            customer_code  = p.get("customer_code"),
+            bill_number    = p.get("bill_number"),
+            date           = p.get("date"),
+            date_from      = p.get("date_from"),
+            date_to        = p.get("date_to"),
+            payment_status = p.get("payment_status"),
+            min_amount     = p.get("min_amount"),
+            max_amount     = p.get("max_amount"),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -388,9 +411,6 @@ class CustomerOutstandingListView(generics.ListAPIView):
 # ---------------------------------------------------------------------------
 # Invoice filtering
 # ---------------------------------------------------------------------------
-
-from .selectors import get_filtered_invoices
-
 
 class InvoiceFilteredListView(generics.ListAPIView):
     """
