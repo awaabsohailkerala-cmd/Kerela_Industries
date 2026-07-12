@@ -8,6 +8,8 @@ import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
+import Pagination from '../../components/ui/Pagination';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 
 const ReturnsPage = () => {
@@ -16,8 +18,6 @@ const ReturnsPage = () => {
     const { orderId } = useParams();
     const navigate = useNavigate();
 
-    const [returns, setReturns] = useState([]);
-    const [loading, setLoading] = useState(false);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [formData, setFormData] = useState({
         items: [],
@@ -25,29 +25,24 @@ const ReturnsPage = () => {
     });
     const [orderItems, setOrderItems] = useState([]);
     const [formLoading, setFormLoading] = useState(false);
-    const [filters, setFilters] = useState({});
+
+    const fetchReturnsPage = (params) => {
+        if (!orderId || orderId === 'undefined') {
+            return Promise.resolve({ results: [], count: 0, total_pages: 1, current_page: 1, page_size: 25 });
+        }
+        return purchasesApi.returns.getByOrder(orderId, params);
+    };
+
+    const {
+        data: returns, meta, page, setPage, loading,
+        refetch: fetchReturns,
+    } = usePaginatedList(fetchReturnsPage, {});
 
     useEffect(() => {
         if (orderId && orderId !== 'undefined') {
-            fetchReturns();
             fetchOrderItems();
         }
-    }, [orderId, filters]);
-
-    const fetchReturns = async () => {
-        if (!orderId || orderId === 'undefined') return;
-        setLoading(true);
-        try {
-            const data = await purchasesApi.returns.getByOrder(orderId);
-            console.log('Order returns data:', data); // Debug log
-            setReturns(data || []);
-        } catch (error) {
-            console.error('Failed to fetch returns:', error);
-            setReturns([]);
-        } finally {
-            setLoading(false);
-        }
-    };
+    }, [orderId]);
 
     const fetchOrderItems = async () => {
         try {
@@ -237,6 +232,14 @@ const ReturnsPage = () => {
                 data={returns}
                 onRowClick={(ret) => navigate(`/purchases/returns/${ret.id}`)}
             />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
 
             {/* Create Return Modal */}
             <Modal

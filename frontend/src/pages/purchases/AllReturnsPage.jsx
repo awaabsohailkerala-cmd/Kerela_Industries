@@ -7,6 +7,8 @@ import SearchBar from '../../components/ui/SearchBar';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
 import FilterBar from '../../components/ui/FilterBar';
+import Pagination from '../../components/ui/Pagination';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { Link, useNavigate } from 'react-router-dom';
 
 const AllReturnsPage = () => {
@@ -14,20 +16,26 @@ const AllReturnsPage = () => {
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
     const navigate = useNavigate();
 
-    const [returns, setReturns] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [filters, setFilters] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
     const [suppliers, setSuppliers] = useState([]);
     const [showFilters, setShowFilters] = useState(false);
 
+    const fetchReturnsPage = (params) => {
+        const p = { ...params };
+        if (searchTerm) {
+            p.order_number = searchTerm;
+        }
+        return purchasesApi.returns.getAll(p);
+    };
+
+    const {
+        data: returns, meta, page, setPage, loading,
+        filters, setFilters, refetch: fetchAllReturns,
+    } = usePaginatedList(fetchReturnsPage, {});
+
     useEffect(() => {
         loadSuppliers();
     }, []);
-
-    useEffect(() => {
-        fetchAllReturns();
-    }, [filters, searchTerm]);
 
     const loadSuppliers = async () => {
         try {
@@ -35,24 +43,6 @@ const AllReturnsPage = () => {
             setSuppliers(data || []);
         } catch (error) {
             console.error('Failed to load suppliers:', error);
-        }
-    };
-
-    const fetchAllReturns = async () => {
-        setLoading(true);
-        try {
-            const params = { ...filters };
-            if (searchTerm) {
-                params.order_number = searchTerm;
-            }
-            const data = await purchasesApi.returns.getAll(params);
-            console.log('Returns data:', data);
-            setReturns(data || []);
-        } catch (error) {
-            console.error('Failed to fetch returns:', error);
-            setReturns([]);
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -67,6 +57,7 @@ const AllReturnsPage = () => {
 
     const handleSearch = (value) => {
         setSearchTerm(value);
+        setPage(1);
     };
 
     const handleAcceptReturn = async (returnId) => {
@@ -234,6 +225,14 @@ const AllReturnsPage = () => {
                 data={returns}
                 onRowClick={(ret) => navigate(`/purchases/returns/${ret.id}`)}
             />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
         </div>
     );
 };

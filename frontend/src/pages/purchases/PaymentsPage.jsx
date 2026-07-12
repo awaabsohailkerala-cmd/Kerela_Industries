@@ -10,6 +10,8 @@ import SearchBar from '../../components/ui/SearchBar';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
 import Card from '../../components/ui/Card';
+import Pagination from '../../components/ui/Pagination';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 
 const PaymentsPage = () => {
@@ -18,8 +20,6 @@ const PaymentsPage = () => {
     const { orderId } = useParams();
     const navigate = useNavigate();
 
-    const [payments, setPayments] = useState([]);
-    const [loading, setLoading] = useState(false);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [paymentSummary, setPaymentSummary] = useState(null);
     const [orderDetails, setOrderDetails] = useState(null);
@@ -30,29 +30,25 @@ const PaymentsPage = () => {
         note: '',
     });
     const [formLoading, setFormLoading] = useState(false);
-    const [filters, setFilters] = useState({});
+
+    const fetchPaymentsPage = (params) => {
+        if (!orderId || orderId === 'undefined') {
+            return Promise.resolve({ results: [], count: 0, total_pages: 1, current_page: 1, page_size: 25 });
+        }
+        return purchasesApi.payments.getByOrder(orderId, params);
+    };
+
+    const {
+        data: payments, meta, page, setPage, loading,
+        filters, setFilters, refetch: fetchPayments,
+    } = usePaginatedList(fetchPaymentsPage, {});
 
     useEffect(() => {
         if (orderId && orderId !== 'undefined') {
-            fetchPayments();
             fetchSummary();
             fetchOrderDetails();
         }
-    }, [orderId, filters]);
-
-    const fetchPayments = async () => {
-        if (!orderId || orderId === 'undefined') return;
-        setLoading(true);
-        try {
-            const data = await purchasesApi.payments.getByOrder(orderId, filters);
-            setPayments(data || []);
-        } catch (error) {
-            console.error('Failed to fetch payments:', error);
-            setPayments([]);
-        } finally {
-            setLoading(false);
-        }
-    };
+    }, [orderId]);
 
     const fetchSummary = async () => {
         if (!orderId || orderId === 'undefined') return;
@@ -281,6 +277,14 @@ const PaymentsPage = () => {
                 columns={columns}
                 data={payments}
             />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
 
             <Modal
                 isOpen={showCreateModal}

@@ -8,6 +8,7 @@ import SearchBar from '../../components/ui/SearchBar';
 import Select from '../../components/ui/Select';
 import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import Pagination from '../../components/ui/Pagination';
 import { useNavigate } from 'react-router-dom';
 
 const RatesPage = () => {
@@ -15,7 +16,10 @@ const RatesPage = () => {
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
     const navigate = useNavigate();
 
-    const { data, loading, filters, setFilters, create, update, refetch } = useRates();
+    const {
+        data, meta, page, setPage, loading,
+        filters, setFilters, categories, create, update,
+    } = useRates();
 
     // Modal state
     const [showModal, setShowModal] = useState(false);
@@ -23,21 +27,12 @@ const RatesPage = () => {
     const [selectedRate, setSelectedRate] = useState(null);
     const [formLoading, setFormLoading] = useState(false);
 
-    // Category filter options are derived from the rate list itself —
-    // normal users have no Purchases app access to fetch categories directly.
-    const categories = [...new Map(
-        data
-            .map(item => item.product?.category)
-            .filter(Boolean)
-            .map(category => [category.id, category])
-    ).values()];
-
     const handleSearch = (value) => {
-        setFilters(prev => ({ ...prev, search: value }));
+        setFilters({ ...filters, search: value });
     };
 
     const handleFilterChange = (key, value) => {
-        setFilters(prev => ({ ...prev, [key]: value }));
+        setFilters({ ...filters, [key]: value });
     };
 
     const handleResetFilters = () => {
@@ -136,6 +131,14 @@ const RatesPage = () => {
                 onViewHistory={handleViewHistory}
                 loading={loading}
             />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
 
             {/* Rate Form Modal */}
             <RateFormModal

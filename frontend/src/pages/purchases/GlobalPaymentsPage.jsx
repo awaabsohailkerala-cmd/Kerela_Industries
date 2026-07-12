@@ -7,50 +7,51 @@ import SearchBar from '../../components/ui/SearchBar';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
 import FilterBar from '../../components/ui/FilterBar';
+import Pagination from '../../components/ui/Pagination';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { Link } from 'react-router-dom';
 
 const GlobalPaymentsPage = () => {
-    const [payments, setPayments] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [filters, setFilters] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
     const [showFilters, setShowFilters] = useState(false);
     const [orderDetails, setOrderDetails] = useState({});
 
+    const fetchPaymentsPage = (params) => {
+        const p = { ...params };
+        if (searchTerm) {
+            p.reference = searchTerm;
+        }
+        return purchasesApi.payments.getAll(p);
+    };
+
+    const {
+        data: payments, meta, page, setPage, loading,
+        filters, setFilters,
+    } = usePaginatedList(fetchPaymentsPage, {});
+
+    // Fetch order details for the payments on the current page to get supplier name
     useEffect(() => {
-        fetchPayments();
-    }, [filters, searchTerm]);
-
-    const fetchPayments = async () => {
-        setLoading(true);
-        try {
-            const params = { ...filters };
-            if (searchTerm) {
-                params.reference = searchTerm;
-            }
-            const data = await purchasesApi.payments.getAll(params);
-            setPayments(data || []);
-
-            // Fetch order details for each payment to get supplier name
-            const orderIds = [...new Set(data.map(p => p.order).filter(id => id))];
+        if (!payments || payments.length === 0) {
+            setOrderDetails({});
+            return;
+        }
+        let cancelled = false;
+        (async () => {
+            const orderIds = [...new Set(payments.map(p => p.order).filter(id => id))];
             const orderPromises = orderIds.map(id => purchasesApi.orders.getById(id));
             const orderResults = await Promise.allSettled(orderPromises);
 
             const orderMap = {};
-            orderResults.forEach((result, index) => {
+            orderResults.forEach((result) => {
                 if (result.status === 'fulfilled') {
                     const order = result.value;
                     orderMap[order.id] = order;
                 }
             });
-            setOrderDetails(orderMap);
-        } catch (error) {
-            console.error('Failed to fetch payments:', error);
-            setPayments([]);
-        } finally {
-            setLoading(false);
-        }
-    };
+            if (!cancelled) setOrderDetails(orderMap);
+        })();
+        return () => { cancelled = true; };
+    }, [payments]);
 
     const handleApplyFilters = (filterValues) => {
         setFilters(filterValues);
@@ -63,6 +64,7 @@ const GlobalPaymentsPage = () => {
 
     const handleSearch = (value) => {
         setSearchTerm(value);
+        setPage(1);
     };
 
     const columns = [
@@ -200,6 +202,14 @@ const GlobalPaymentsPage = () => {
             </div>
 
             <Table columns={columns} data={payments} />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
 
             {payments.length === 0 && (
                 <div className="text-center py-12">

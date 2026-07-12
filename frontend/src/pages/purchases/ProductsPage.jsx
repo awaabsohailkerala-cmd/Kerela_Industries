@@ -11,13 +11,14 @@ import FilterBar from '../../components/ui/FilterBar';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import Pagination from '../../components/ui/Pagination';
 import { useAuth } from '../../context/AuthContext';
 
 const ProductsPage = () => {
     const { user } = useAuth();
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
 
-    const { data, loading, create, update, delete: deleteProduct, refetch } = useCRUD(
+    const { data, meta, page, setPage, loading, create, update, delete: deleteProduct, refetch } = useCRUD(
         purchasesApi.products,
         { search: '', category: '', shelf: '' }
     );
@@ -46,10 +47,14 @@ const ProductsPage = () => {
 
     const loadLookups = async () => {
         try {
-            const [cats, shelves] = await Promise.all([
-                purchasesApi.categories.getAll(),
-                purchasesApi.shelves.getAll(),
+            // page_size override — dropdown needs every category/shelf, not
+            // just the first paginated page.
+            const [catsRes, shelvesRes] = await Promise.all([
+                purchasesApi.categories.getAll({ page_size: 500 }),
+                purchasesApi.shelves.getAll({ page_size: 500 }),
             ]);
+            const cats = catsRes.results || catsRes;
+            const shelves = shelvesRes.results || shelvesRes;
             setCategories(cats.filter(c => !c.is_deleted));
             setShelves(shelves.filter(s => !s.is_deleted));
         } catch (error) {
@@ -271,6 +276,14 @@ const ProductsPage = () => {
                 columns={columns}
                 data={filteredData}
             />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
 
             <Modal
                 isOpen={showModal}

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { cashFlowApi } from '../../services/cashFlowApi';
-import { useExpenseCategories, useCashFlowStats } from '../../hooks/useCashFlow';
+import { useAllExpenseCategories, useCashFlowStats } from '../../hooks/useCashFlow';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
@@ -15,7 +15,7 @@ const EditExpensePage = () => {
     const { user } = useAuth();
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
 
-    const { data: categories, loading: categoriesLoading } = useExpenseCategories();
+    const { data: categories, loading: categoriesLoading } = useAllExpenseCategories();
     const { refetch: refetchStats } = useCashFlowStats();
 
     const [loading, setLoading] = useState(true);

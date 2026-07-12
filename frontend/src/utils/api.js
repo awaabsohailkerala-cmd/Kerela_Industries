@@ -73,7 +73,7 @@ export const authApi = {
 
 // ==================== USERS API ====================
 export const usersApi = {
-    getAll: () => api.get('/users/'),
+    getAll: (params = {}) => api.get('/users/', { params }),
     create: (userData) => api.post('/users/', userData),
     delete: (email) => api.delete(`/users/${email}/delete/`),
     getProfile: () => api.get('/users/me/'),

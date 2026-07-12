@@ -1,107 +1,76 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { billingApi } from '../services/billingApi';
+import { usePaginatedList } from './usePaginatedList';
 
-// Generic CRUD hook for billing resources
+// Generic CRUD hook for billing resources — thin wrapper around usePaginatedList.
 export const useBillingCRUD = (service, initialFilters = {}) => {
-    const [data, setData] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [filters, setFilters] = useState(initialFilters);
-    const [appliedFilters, setAppliedFilters] = useState(initialFilters);
-    const debounceTimer = useRef(null);
+    const {
+        data, meta, loading: listLoading, error: listError,
+        filters, setFilters, page, setPage, refetch,
+    } = usePaginatedList((params) => service.getAll(params), initialFilters);
 
-    const fetchData = useCallback(async (filterParams = {}) => {
-        setLoading(true);
-        setError(null);
+    const [mutating, setMutating] = useState(false);
+    const [mutationError, setMutationError] = useState(null);
+
+    const create = async (payload) => {
+        setMutating(true);
         try {
-            const result = await service.getAll(filterParams);
-            setData(result || []);
-        } catch (err) {
-            setError(err.message || 'Failed to fetch data');
-            setData([]);
-        } finally {
-            setLoading(false);
-        }
-    }, [service]);
-
-    useEffect(() => {
-        fetchData(appliedFilters);
-    }, []);
-
-    const applyFilters = useCallback((newFilters) => {
-        if (debounceTimer.current) {
-            clearTimeout(debounceTimer.current);
-        }
-        setFilters(newFilters);
-        debounceTimer.current = setTimeout(() => {
-            const cleanFilters = {};
-            Object.keys(newFilters).forEach(key => {
-                const value = newFilters[key];
-                if (value !== '' && value !== null && value !== undefined) {
-                    cleanFilters[key] = value;
-                }
-            });
-            setAppliedFilters(cleanFilters);
-            fetchData(cleanFilters);
-        }, 500);
-    }, [fetchData]);
-
-    const create = async (data) => {
-        setLoading(true);
-        try {
-            const result = await service.create(data);
-            await fetchData(appliedFilters);
+            const result = await service.create(payload);
+            await refetch();
             return result;
         } catch (err) {
-            setError(err.message);
+            setMutationError(err.message);
             throw err;
         } finally {
-            setLoading(false);
+            setMutating(false);
         }
     };
 
-    const update = async (id, data) => {
-        setLoading(true);
+    const update = async (id, payload) => {
+        setMutating(true);
         try {
-            const result = await service.update(id, data);
-            await fetchData(appliedFilters);
+            const result = await service.update(id, payload);
+            await refetch();
             return result;
         } catch (err) {
-            setError(err.message);
+            setMutationError(err.message);
             throw err;
         } finally {
-            setLoading(false);
+            setMutating(false);
         }
     };
 
     const deleteItem = async (id) => {
-        setLoading(true);
+        setMutating(true);
         try {
             await service.delete(id);
-            await fetchData(appliedFilters);
+            if (data.length === 1 && page > 1) {
+                setPage(page - 1);
+            } else {
+                await refetch();
+            }
         } catch (err) {
-            setError(err.message);
+            setMutationError(err.message);
             throw err;
         } finally {
-            setLoading(false);
+            setMutating(false);
         }
     };
 
-    const resetFilters = () => {
-        setFilters(initialFilters);
-        setAppliedFilters(initialFilters);
-        fetchData(initialFilters);
-    };
+    const resetFilters = () => setFilters(initialFilters);
 
     return {
         data,
-        loading,
-        error,
+        meta,
+        page,
+        setPage,
+        loading: listLoading || mutating,
+        error: listError || mutationError,
         filters,
-        appliedFilters,
-        setFilters: applyFilters,
+        appliedFilters: filters,
+        setFilters,
         resetFilters,
-        refetch: () => fetchData(appliedFilters),
+        refetch,
         create,
         update,
         delete: deleteItem,

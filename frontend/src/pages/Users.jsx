@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { usersApi } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import { usePaginatedList } from '../hooks/usePaginatedList';
 import UserCard from '../components/users/UserCard';
 import UserForm from '../components/users/UserForm';
 import UserFilters from '../components/users/UserFilters';
@@ -10,13 +11,12 @@ import ChangePasswordModal from '../components/users/ChangePasswordModal';
 import Button from '../components/common/Button';
 import Modal from '../components/common/Modal';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+import Pagination from '../components/ui/Pagination';
 
 const Users = () => {
     const { user: currentUser } = useAuth();
     const navigate = useNavigate();
-    const [users, setUsers] = useState([]);
     const [filteredUsers, setFilteredUsers] = useState([]);
-    const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('');
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -27,9 +27,13 @@ const Users = () => {
 
     const isSuperuser = currentUser?.role === 'superuser';
 
-    useEffect(() => {
-        fetchUsers();
-    }, []);
+    // Backend UserListCreateView has no search/role query param support
+    // (get_queryset always returns every user), so — same reasoning as
+    // Suppliers — request everything in one page (user lists are small/
+    // bounded) and keep search/role filtering client-side as before.
+    const { data: users, meta, page, setPage, loading, refetch } = usePaginatedList(
+        usersApi.getAll, {}, 500
+    );
 
     useEffect(() => {
         let filtered = [...users];
@@ -49,23 +53,11 @@ const Users = () => {
         setFilteredUsers(filtered);
     }, [users, searchTerm, roleFilter]);
 
-    const fetchUsers = async () => {
-        try {
-            const data = await usersApi.getAll();
-            setUsers(data);
-            setFilteredUsers(data);
-        } catch (error) {
-            console.error('Failed to fetch users:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
     const handleCreateUser = async (data) => {
         setFormLoading(true);
         try {
             await usersApi.create(data);
-            await fetchUsers();
+            await refetch();
             setShowCreateModal(false);
         } catch (error) {
             console.error('Failed to create user:', error);
@@ -78,7 +70,7 @@ const Users = () => {
         setFormLoading(true);
         try {
             await usersApi.updateProfile(data);
-            await fetchUsers();
+            await refetch();
             setShowEditModal(false);
         } catch (error) {
             console.error('Failed to update user:', error);
@@ -92,7 +84,7 @@ const Users = () => {
 
         try {
             await usersApi.delete(email);
-            await fetchUsers();
+            await refetch();
         } catch (error) {
             console.error('Failed to delete user:', error);
         }
@@ -193,6 +185,14 @@ const Users = () => {
                     )}
                 </div>
             </AnimatePresence>
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
 
             {/* Create User Modal */}
             <Modal

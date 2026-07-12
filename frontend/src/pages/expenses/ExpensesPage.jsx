@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom'; // Add this import
-import { useExpenses, useExpenseCategories, useCashFlowStats } from '../../hooks/useCashFlow';
+import { useExpenses, useAllExpenseCategories, useCashFlowStats } from '../../hooks/useCashFlow';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
@@ -12,11 +12,15 @@ import SearchBar from '../../components/ui/SearchBar';
 import FilterBar from '../../components/ui/FilterBar';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Badge from '../../components/ui/Badge';
+import Pagination from '../../components/ui/Pagination';
 
 const ExpensesPage = () => {
     const navigate = useNavigate(); // Add this
-    const { data: expenses, loading, filters, setFilters, refetch, create, update, delete: deleteExpense } = useExpenses();
-    const { data: categories, loading: categoriesLoading } = useExpenseCategories();
+    const {
+        data: expenses, meta, page, setPage, loading,
+        filters, setFilters, refetch, create, update, delete: deleteExpense,
+    } = useExpenses();
+    const { data: categories, loading: categoriesLoading } = useAllExpenseCategories();
     const { refetch: refetchStats } = useCashFlowStats();
 
     const [showModal, setShowModal] = useState(false);
@@ -241,6 +245,14 @@ const ExpensesPage = () => {
                 data={expenses}
                 onRowClick={handleRowClick}
             />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
 
             {/* Create/Edit Modal */}
             <Modal

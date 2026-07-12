@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { billingApi } from '../../services/billingApi';
@@ -9,41 +9,31 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import PaymentStatusBadge from '../../components/billing/PaymentStatusBadge';
 import InvoiceStatusBadge from '../../components/billing/InvoiceStatusBadge';
 import FilterBar from '../../components/ui/FilterBar';
+import Pagination from '../../components/ui/Pagination';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
 
 const OutstandingInvoicesPage = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
 
-    const [invoices, setInvoices] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [filters, setFilters] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
     const [showFilters, setShowFilters] = useState(false);
 
     // Fetch outstanding invoices
-    const fetchOutstandingInvoices = useCallback(async () => {
-        setLoading(true);
-        try {
-            const params = { ...filters };
-            if (searchTerm) {
-                params.customer_name = searchTerm;
-            }
-            const data = await billingApi.invoices.getOutstanding(params);
-            setInvoices(data || []);
-        } catch (error) {
-            console.error('Failed to fetch outstanding invoices:', error);
-            setInvoices([]);
-        } finally {
-            setLoading(false);
-        }
-    }, [filters, searchTerm]);
+    const fetchOutstandingInvoicesPage = (params) => {
+        const p = { ...params };
+        if (searchTerm) p.customer_name = searchTerm;
+        return billingApi.invoices.getOutstanding(p);
+    };
 
-    useEffect(() => {
-        fetchOutstandingInvoices();
-    }, [fetchOutstandingInvoices]);
+    const {
+        data: invoices, meta, page, setPage, loading,
+        filters, setFilters,
+    } = usePaginatedList(fetchOutstandingInvoicesPage, {});
 
     const handleSearch = (value) => {
         setSearchTerm(value);
+        setPage(1);
     };
 
     const handleApplyFilters = (filterValues) => {
@@ -129,7 +119,7 @@ const OutstandingInvoicesPage = () => {
                     All invoices with outstanding balance (credit_outstanding &gt; 0)
                 </p>
                 <p className="text-sm text-neutral-400 mt-1">
-                    {invoices.length} invoice{invoices.length !== 1 ? 's' : ''} with outstanding balance
+                    {meta.count} invoice{meta.count !== 1 ? 's' : ''} with outstanding balance
                 </p>
             </div>
 
@@ -179,11 +169,21 @@ const OutstandingInvoicesPage = () => {
                     </p>
                 </div>
             ) : (
-                <Table
-                    columns={columns}
-                    data={invoices}
-                    onRowClick={(invoice) => navigate(`/billing/invoices/${invoice.id}`)}
-                />
+                <>
+                    <Table
+                        columns={columns}
+                        data={invoices}
+                        onRowClick={(invoice) => navigate(`/billing/invoices/${invoice.id}`)}
+                    />
+
+                    {meta.totalPages > 1 && (
+                        <Pagination
+                            currentPage={meta.currentPage}
+                            totalPages={meta.totalPages}
+                            onPageChange={setPage}
+                        />
+                    )}
+                </>
             )}
         </div>
     );

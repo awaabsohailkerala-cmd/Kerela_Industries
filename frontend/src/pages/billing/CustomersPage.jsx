@@ -10,6 +10,7 @@ import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import Pagination from '../../components/ui/Pagination';
 import { useNavigate } from 'react-router-dom';
 
 const CustomersPage = () => {
@@ -17,7 +18,7 @@ const CustomersPage = () => {
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
     const navigate = useNavigate();
 
-    const { data, loading, filters, setFilters, resetFilters, create, update, delete: deleteCustomer } = useBillingCRUD(
+    const { data, meta, page, setPage, loading, filters, setFilters, resetFilters, create, update, delete: deleteCustomer } = useBillingCRUD(
         billingApi.customers
     );
 
@@ -124,6 +125,14 @@ const CustomersPage = () => {
                 onDelete={(id) => setDeleteConfirm(id)}
                 isAdmin={isAdmin}
             />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
 
             {/* Create/Edit Modal */}
             <Modal

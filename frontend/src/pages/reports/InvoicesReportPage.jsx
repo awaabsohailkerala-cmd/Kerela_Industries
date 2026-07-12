@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { reportsApi } from '../../services/reportsApi';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
 import FilterBar from '../../components/ui/FilterBar';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import Pagination from '../../components/ui/Pagination';
 import PaymentStatusBadge from '../../components/billing/PaymentStatusBadge';
 
 const filterConfig = [
@@ -43,35 +45,16 @@ const InvoicesReportPage = () => {
     const navigate = useNavigate();
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
 
-    const [stats, setStats] = useState(null);
-    const [results, setResults] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [filters, setFilters] = useState({});
     const [showFilters, setShowFilters] = useState(false);
 
-    useEffect(() => {
-        if (isAdmin) {
-            fetchReport();
-        }
-    }, [filters]);
+    const {
+        data: results, meta, extra, page, setPage, loading, error,
+        filters, setFilters,
+    } = usePaginatedList(reportsApi.invoices.get, {});
 
-    const fetchReport = async () => {
-        setLoading(true);
-        setError('');
-        try {
-            const data = await reportsApi.invoices.get(filters);
-            setStats(data.stats);
-            setResults(data.results || []);
-        } catch (err) {
-            console.error('Failed to fetch invoices report:', err);
-            setError(err.response?.data?.non_field_errors?.[0] || 'Failed to load report.');
-            setStats(null);
-            setResults([]);
-        } finally {
-            setLoading(false);
-        }
-    };
+    // Stats are computed server-side over the full filtered set (not just
+    // the current page) and passed through as an extra top-level field.
+    const stats = extra?.stats;
 
     if (!isAdmin) {
         navigate('/dashboard');
@@ -146,7 +129,16 @@ const InvoicesReportPage = () => {
                             <p className="text-sm text-neutral-500 mt-1">Try adjusting your date filters</p>
                         </div>
                     ) : (
-                        <Table columns={columns} data={results} />
+                        <>
+                            <Table columns={columns} data={results} />
+                            {meta.totalPages > 1 && (
+                                <Pagination
+                                    currentPage={meta.currentPage}
+                                    totalPages={meta.totalPages}
+                                    onPageChange={setPage}
+                                />
+                            )}
+                        </>
                     )}
                 </>
             )}

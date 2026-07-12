@@ -12,6 +12,7 @@ import SavePDFModal from '../../components/ledger/SavePDFModal';
 import SavedPDFDrawer from '../../components/ledger/SavedPDFDrawer';
 import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import Pagination from '../../components/ui/Pagination';
 
 const LedgerDetailPage = () => {
     const { id } = useParams();
@@ -26,7 +27,10 @@ const LedgerDetailPage = () => {
         loading,
         filters,
         setFilters,
-        refetch
+        refetch,
+        meta,
+        page,
+        setPage
     } = useLedgerDetail(id);
 
     const {
@@ -166,6 +170,14 @@ const LedgerDetailPage = () => {
                     <ClosingBalanceSummary entries={entries} />
                 )}
             </div>
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
 
             {/* Save PDF Modal */}
             <SavePDFModal

@@ -6,6 +6,8 @@ import Card from '../../components/ui/Card';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Table from '../../components/ui/Table';
 import Badge from '../../components/ui/Badge';
+import Pagination from '../../components/ui/Pagination';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
 import OrderStatusBadge from '../../components/purchases/OrderStatusBadge';
 import OrderPaymentStatusBadge from '../../components/purchases/OrderPaymentStatusBadge';
 
@@ -14,7 +16,6 @@ const SupplierDetailPage = () => {
 
     const [supplier, setSupplier] = useState(null);
     const [payableSummary, setPayableSummary] = useState(null);
-    const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -24,21 +25,28 @@ const SupplierDetailPage = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const supplierData = await purchasesApi.suppliers.getById(id);
-            const [summaryData, ordersData] = await Promise.all([
+            const [supplierData, summaryData] = await Promise.all([
+                purchasesApi.suppliers.getById(id),
                 purchasesApi.suppliers.getPayableSummary(id),
-                purchasesApi.orders.getAll({ supplier_code: supplierData.code }),
             ]);
 
             setSupplier(supplierData);
             setPayableSummary(summaryData);
-            setOrders(ordersData || []);
         } catch (error) {
             console.error('Failed to fetch supplier details:', error);
         } finally {
             setLoading(false);
         }
     };
+
+    const fetchOrdersPage = (params) => {
+        if (!supplier?.code) {
+            return Promise.resolve({ results: [], count: 0, total_pages: 1, current_page: 1, page_size: 25 });
+        }
+        return purchasesApi.orders.getAll({ ...params, supplier_code: supplier.code });
+    };
+
+    const { data: orders, meta, page, setPage, loading: ordersLoading } = usePaginatedList(fetchOrdersPage, {});
 
     const columns = [
         { key: 'order_number', label: 'Order #', width: '120px' },
@@ -220,6 +228,14 @@ const SupplierDetailPage = () => {
                         data={draftOrders}
                     />
                 </Card>
+            )}
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
             )}
         </div>
     );

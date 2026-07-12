@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { cashFlowApi } from '../services/cashFlowApi';
+import { usePaginatedList } from './usePaginatedList';
 
 // Hook for dashboard stats
 export const useCashFlowStats = () => {
@@ -27,168 +28,207 @@ export const useCashFlowStats = () => {
     return { data, loading, error, refetch: fetchStats };
 };
 
-// Hook for breakdown data
+// Hook for breakdown data.
+// Most breakdown endpoints are now paginated (standard ListAPIView); the
+// cashInHand one is a plain APIView returning a raw array — usePaginatedList
+// handles both shapes transparently, so no per-type branching needed here.
 export const useBreakdown = (type, initialFilters = {}) => {
-    const [data, setData] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [filters, setFilters] = useState(initialFilters);
-
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const cleanFilters = {};
-            Object.keys(filters).forEach(key => {
-                if (filters[key] !== '' && filters[key] !== null && filters[key] !== undefined) {
-                    cleanFilters[key] = filters[key];
-                }
-            });
-
-            let result;
-            switch (type) {
-                case 'cashInHand':
-                    result = await cashFlowApi.breakdowns.cashInHand(cleanFilters);
-                    break;
-                case 'invoicesCash':
-                    result = await cashFlowApi.breakdowns.invoicesCash(cleanFilters);
-                    break;
-                case 'customerOutstanding':
-                    result = await cashFlowApi.breakdowns.customerOutstanding(cleanFilters);
-                    break;
-                case 'paidPayables':
-                    result = await cashFlowApi.breakdowns.paidPayables(cleanFilters);
-                    break;
-                case 'supplierOutstanding':
-                    result = await cashFlowApi.breakdowns.supplierOutstanding(cleanFilters);
-                    break;
-                case 'invoices':
-                    result = await cashFlowApi.breakdowns.invoices(cleanFilters);
-                    break;
-                case 'purchases':
-                    result = await cashFlowApi.breakdowns.purchases(cleanFilters);
-                    break;
-                case 'expenses':
-                    result = await cashFlowApi.breakdowns.expenses(cleanFilters);
-                    break;
-                default:
-                    result = [];
+    const cleanFilters = (raw) => {
+        const cleaned = {};
+        Object.keys(raw).forEach(key => {
+            if (raw[key] !== '' && raw[key] !== null && raw[key] !== undefined) {
+                cleaned[key] = raw[key];
             }
-            setData(result || []);
-        } catch (err) {
-            setError(err.message || 'Failed to fetch breakdown');
-            setData([]);
-        } finally {
-            setLoading(false);
-        }
-    }, [type, filters]);
+        });
+        return cleaned;
+    };
 
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
-
-    return { data, loading, error, filters, setFilters, refetch: fetchData };
-};
-
-// Hook for expense management
-export const useExpenses = (initialFilters = {}) => {
-    const [data, setData] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [filters, setFilters] = useState(initialFilters);
-
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const cleanFilters = {};
-            Object.keys(filters).forEach(key => {
-                if (filters[key] !== '' && filters[key] !== null && filters[key] !== undefined) {
-                    cleanFilters[key] = filters[key];
-                }
-            });
-            const result = await cashFlowApi.expenses.getAll(cleanFilters);
-            setData(result || []);
-        } catch (err) {
-            setError(err.message || 'Failed to fetch expenses');
-            setData([]);
-        } finally {
-            setLoading(false);
-        }
-    }, [filters]);
-
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
-
-    const create = async (data) => {
-        setLoading(true);
-        try {
-            const result = await cashFlowApi.expenses.create(data);
-            await fetchData();
-            return result;
-        } catch (err) {
-            setError(err.message);
-            throw err;
-        } finally {
-            setLoading(false);
+    const fetchBreakdownPage = (params) => {
+        const { page, page_size, ...rest } = params;
+        const filterParams = { ...cleanFilters(rest), page, page_size };
+        switch (type) {
+            case 'cashInHand':
+                return cashFlowApi.breakdowns.cashInHand(filterParams);
+            case 'invoicesCash':
+                return cashFlowApi.breakdowns.invoicesCash(filterParams);
+            case 'customerOutstanding':
+                return cashFlowApi.breakdowns.customerOutstanding(filterParams);
+            case 'paidPayables':
+                return cashFlowApi.breakdowns.paidPayables(filterParams);
+            case 'supplierOutstanding':
+                return cashFlowApi.breakdowns.supplierOutstanding(filterParams);
+            case 'invoices':
+                return cashFlowApi.breakdowns.invoices(filterParams);
+            case 'purchases':
+                return cashFlowApi.breakdowns.purchases(filterParams);
+            case 'expenses':
+                return cashFlowApi.breakdowns.expenses(filterParams);
+            default:
+                return Promise.resolve([]);
         }
     };
 
-    const update = async (id, data) => {
-        setLoading(true);
+    const { data, meta, loading, error, filters, setFilters, page, setPage, refetch } =
+        usePaginatedList(fetchBreakdownPage, initialFilters);
+
+    return { data, meta, page, setPage, loading, error, filters, setFilters, refetch };
+};
+
+// Hook for expense management — thin wrapper around usePaginatedList.
+export const useExpenses = (initialFilters = {}) => {
+    const {
+        data, meta, loading: listLoading, error: listError,
+        filters, setFilters, page, setPage, refetch,
+    } = usePaginatedList((params) => cashFlowApi.expenses.getAll(params), initialFilters);
+
+    const [mutating, setMutating] = useState(false);
+    const [mutationError, setMutationError] = useState(null);
+
+    const create = async (payload) => {
+        setMutating(true);
         try {
-            const result = await cashFlowApi.expenses.update(id, data);
-            await fetchData();
+            const result = await cashFlowApi.expenses.create(payload);
+            await refetch();
             return result;
         } catch (err) {
-            setError(err.message);
+            setMutationError(err.message);
             throw err;
         } finally {
-            setLoading(false);
+            setMutating(false);
+        }
+    };
+
+    const update = async (id, payload) => {
+        setMutating(true);
+        try {
+            const result = await cashFlowApi.expenses.update(id, payload);
+            await refetch();
+            return result;
+        } catch (err) {
+            setMutationError(err.message);
+            throw err;
+        } finally {
+            setMutating(false);
         }
     };
 
     const deleteItem = async (id) => {
-        setLoading(true);
+        setMutating(true);
         try {
             await cashFlowApi.expenses.delete(id);
-            await fetchData();
+            if (data.length === 1 && page > 1) {
+                setPage(page - 1);
+            } else {
+                await refetch();
+            }
         } catch (err) {
-            setError(err.message);
+            setMutationError(err.message);
             throw err;
         } finally {
-            setLoading(false);
+            setMutating(false);
         }
     };
 
     return {
         data,
-        loading,
-        error,
+        meta,
+        page,
+        setPage,
+        loading: listLoading || mutating,
+        error: listError || mutationError,
         filters,
         setFilters,
-        refetch: fetchData,
+        refetch,
         create,
         update,
         delete: deleteItem,
     };
 };
 
-// Hook for expense categories
-export const useExpenseCategories = () => {
+// Hook for expense categories — thin wrapper around usePaginatedList.
+export const useExpenseCategories = (initialFilters = {}) => {
+    const {
+        data, meta, loading: listLoading, error: listError,
+        filters, setFilters, page, setPage, refetch,
+    } = usePaginatedList((params) => cashFlowApi.categories.getAll(params), initialFilters);
+
+    const [mutating, setMutating] = useState(false);
+    const [mutationError, setMutationError] = useState(null);
+
+    const create = async (payload) => {
+        setMutating(true);
+        try {
+            const result = await cashFlowApi.categories.create(payload);
+            await refetch();
+            return result;
+        } catch (err) {
+            setMutationError(err.message);
+            throw err;
+        } finally {
+            setMutating(false);
+        }
+    };
+
+    const update = async (id, payload) => {
+        setMutating(true);
+        try {
+            const result = await cashFlowApi.categories.update(id, payload);
+            await refetch();
+            return result;
+        } catch (err) {
+            setMutationError(err.message);
+            throw err;
+        } finally {
+            setMutating(false);
+        }
+    };
+
+    const deleteItem = async (id) => {
+        setMutating(true);
+        try {
+            await cashFlowApi.categories.delete(id);
+            if (data.length === 1 && page > 1) {
+                setPage(page - 1);
+            } else {
+                await refetch();
+            }
+        } catch (err) {
+            setMutationError(err.message);
+            throw err;
+        } finally {
+            setMutating(false);
+        }
+    };
+
+    return {
+        data,
+        meta,
+        page,
+        setPage,
+        loading: listLoading || mutating,
+        error: listError || mutationError,
+        filters,
+        setFilters,
+        refetch,
+        create,
+        update,
+        delete: deleteItem,
+    };
+};
+
+// Full (page_size:500) expense category list — for dropdown population
+// (e.g. the expense form/filter select), decoupled from the paginated
+// management table above.
+export const useAllExpenseCategories = () => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
-        setError(null);
         try {
-            const result = await cashFlowApi.categories.getAll();
-            setData(result || []);
+            const result = await cashFlowApi.categories.getAll({ page_size: 500 });
+            setData(result?.results || result || []);
         } catch (err) {
-            setError(err.message || 'Failed to fetch categories');
             setData([]);
         } finally {
             setLoading(false);
@@ -199,54 +239,5 @@ export const useExpenseCategories = () => {
         fetchData();
     }, [fetchData]);
 
-    const create = async (data) => {
-        setLoading(true);
-        try {
-            const result = await cashFlowApi.categories.create(data);
-            await fetchData();
-            return result;
-        } catch (err) {
-            setError(err.message);
-            throw err;
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const update = async (id, data) => {
-        setLoading(true);
-        try {
-            const result = await cashFlowApi.categories.update(id, data);
-            await fetchData();
-            return result;
-        } catch (err) {
-            setError(err.message);
-            throw err;
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const deleteItem = async (id) => {
-        setLoading(true);
-        try {
-            await cashFlowApi.categories.delete(id);
-            await fetchData();
-        } catch (err) {
-            setError(err.message);
-            throw err;
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return {
-        data,
-        loading,
-        error,
-        refetch: fetchData,
-        create,
-        update,
-        delete: deleteItem,
-    };
+    return { data, loading, refetch: fetchData };
 };

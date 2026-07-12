@@ -9,33 +9,31 @@ import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
 import FilterBar from '../../components/ui/FilterBar';
+import Pagination from '../../components/ui/Pagination';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { Link, useNavigate } from 'react-router-dom';
 
 const PaymentsPage = () => {
     const navigate = useNavigate();
-    const [payments, setPayments] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [filters, setFilters] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
     const [showFilters, setShowFilters] = useState(false);
     const [invoiceDetails, setInvoiceDetails] = useState({});
 
+    const fetchPaymentsPage = (params) => {
+        const p = { ...params };
+        if (searchTerm) p.reference = searchTerm;
+        return billingApi.payments.getAll(p);
+    };
+
+    const {
+        data: payments, meta, page, setPage, loading,
+        filters, setFilters,
+    } = usePaginatedList(fetchPaymentsPage, {});
+
     useEffect(() => {
-        fetchPayments();
-    }, [filters, searchTerm]);
-
-    const fetchPayments = async () => {
-        setLoading(true);
-        try {
-            const params = { ...filters };
-            if (searchTerm) {
-                params.reference = searchTerm;
-            }
-            const data = await billingApi.payments.getAll(params);
-            setPayments(data || []);
-
-            // Fetch invoice details for each payment
-            const invoiceIds = [...new Set(data.map(p => p.invoice).filter(id => id))];
+        // Fetch invoice details for each payment on the current page
+        const fetchInvoiceDetails = async () => {
+            const invoiceIds = [...new Set(payments.map(p => p.invoice).filter(id => id))];
             if (invoiceIds.length > 0) {
                 const invoicePromises = invoiceIds.map(id =>
                     billingApi.invoices.getById(id).catch(() => null)
@@ -50,13 +48,9 @@ const PaymentsPage = () => {
                 });
                 setInvoiceDetails(invoiceMap);
             }
-        } catch (error) {
-            console.error('Failed to fetch payments:', error);
-            setPayments([]);
-        } finally {
-            setLoading(false);
-        }
-    };
+        };
+        fetchInvoiceDetails();
+    }, [payments]);
 
     const handleApplyFilters = (filterValues) => {
         setFilters(filterValues);
@@ -69,6 +63,7 @@ const PaymentsPage = () => {
 
     const handleSearch = (value) => {
         setSearchTerm(value);
+        setPage(1);
     };
 
     const columns = [
@@ -201,11 +196,19 @@ const PaymentsPage = () => {
                 )}
             </div>
 
-            <Table 
-                columns={columns} 
-                data={payments} 
+            <Table
+                columns={columns}
+                data={payments}
                 onRowClick={(row) => navigate(`/billing/payments/${row.id}`)}
             />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
 
             {payments.length === 0 && (
                 <div className="text-center py-12">

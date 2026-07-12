@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
@@ -9,55 +9,39 @@ import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
 import FilterBar from '../../components/ui/FilterBar';
+import Pagination from '../../components/ui/Pagination';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
 
 const ReturnsPage = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
 
-    const [returns, setReturns] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [filters, setFilters] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
     const [showFilters, setShowFilters] = useState(false);
 
-    const fetchReturns = useCallback(async () => {
-        setLoading(true);
-        try {
-            const params = { ...filters };
-            if (searchTerm) {
-                params.reference = searchTerm; // Assuming backend handles search mostly via reference, or we can just send search to the backend. The backend we created supports reference, bill_number, customer_name. Since we only have one searchTerm, we can either pass it as 'reference' or the backend could be updated to support a generic 'search' param. For now, let's just fetch all if searchTerm is present and filter locally, OR use the backend params. Wait, let's just pass params and filter the rest locally since we have multiple fields. Actually, our new API supports `reference`, `bill_number`, `customer_name`. But our `searchTerm` can be any of those. Let's just pass `filters` to backend and filter `searchTerm` locally for maximum flexibility.
-            }
-            
-            // Get all returns based on filters
-            const data = await billingApi.returns.getAll(filters);
-            let filtered = data || [];
+    // Note: the backend supports `reference`, `bill_number`, `customer_name` as
+    // separate search params, but searchTerm here can match any of those, so we
+    // still filter the fetched page locally against all 3 fields.
+    const {
+        data: rawReturns, meta, page, setPage, loading,
+        filters, setFilters,
+    } = usePaginatedList((params) => billingApi.returns.getAll(params), {});
 
-            // Apply searchTerm locally since it matches against 3 different fields
-            if (searchTerm) {
-                const term = searchTerm.toLowerCase();
-                filtered = filtered.filter(r =>
-                    r.reference_number?.toLowerCase().includes(term) ||
-                    r.invoice_bill_number?.toLowerCase().includes(term) ||
-                    r.customer_name?.toLowerCase().includes(term)
-                );
-            }
-
-            setReturns(filtered);
-        } catch (error) {
-            console.error('Failed to fetch returns:', error);
-            setReturns([]);
-        } finally {
-            setLoading(false);
-        }
-    }, [filters, searchTerm]);
-
-    useEffect(() => {
-        fetchReturns();
-    }, [fetchReturns]);
+    const returns = searchTerm
+        ? rawReturns.filter(r => {
+            const term = searchTerm.toLowerCase();
+            return (
+                r.reference_number?.toLowerCase().includes(term) ||
+                r.invoice_bill_number?.toLowerCase().includes(term) ||
+                r.customer_name?.toLowerCase().includes(term)
+            );
+        })
+        : rawReturns;
 
     const handleSearch = (value) => {
         setSearchTerm(value);
+        setPage(1);
     };
 
     const handleApplyFilters = (filterValues) => {
@@ -199,11 +183,21 @@ const ReturnsPage = () => {
                     </p>
                 </div>
             ) : (
-                <Table
-                    columns={columns}
-                    data={returns}
-                    onRowClick={handleRowClick}
-                />
+                <>
+                    <Table
+                        columns={columns}
+                        data={returns}
+                        onRowClick={handleRowClick}
+                    />
+
+                    {meta.totalPages > 1 && (
+                        <Pagination
+                            currentPage={meta.currentPage}
+                            totalPages={meta.totalPages}
+                            onPageChange={setPage}
+                        />
+                    )}
+                </>
             )}
         </div>
     );

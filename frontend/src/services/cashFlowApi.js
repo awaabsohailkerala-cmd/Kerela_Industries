@@ -8,7 +8,10 @@ export const cashFlowApi = {
 
     // Expense Categories
     categories: {
-        getAll: () => api.get('/cash-flow/expense-categories/'),
+        getAll: (params = {}) => {
+            const query = new URLSearchParams(params).toString();
+            return api.get(`/cash-flow/expense-categories/${query ? `?${query}` : ''}`);
+        },
         create: (data) => api.post('/cash-flow/expense-categories/', data),
         update: (id, data) => api.patch(`/cash-flow/expense-categories/${id}/`, data),
         delete: (id) => api.delete(`/cash-flow/expense-categories/${id}/`),

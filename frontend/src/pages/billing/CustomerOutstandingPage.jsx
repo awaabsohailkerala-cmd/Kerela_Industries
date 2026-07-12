@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../../context/AuthContext';
 import { billingApi } from '../../services/billingApi';
@@ -8,41 +8,31 @@ import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
 import FilterBar from '../../components/ui/FilterBar';
+import Pagination from '../../components/ui/Pagination';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { useNavigate } from 'react-router-dom';
 
 const CustomerOutstandingPage = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
 
-    const [customers, setCustomers] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [filters, setFilters] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
     const [showFilters, setShowFilters] = useState(false);
 
-    const fetchCustomers = useCallback(async () => {
-        setLoading(true);
-        try {
-            const params = { ...filters };
-            if (searchTerm) {
-                params.search = searchTerm;
-            }
-            const data = await billingApi.customers.getOutstanding(params);
-            setCustomers(data || []);
-        } catch (error) {
-            console.error('Failed to fetch customers with outstanding:', error);
-            setCustomers([]);
-        } finally {
-            setLoading(false);
-        }
-    }, [filters, searchTerm]);
+    const fetchCustomersPage = (params) => {
+        const p = { ...params };
+        if (searchTerm) p.search = searchTerm;
+        return billingApi.customers.getOutstanding(p);
+    };
 
-    useEffect(() => {
-        fetchCustomers();
-    }, [fetchCustomers]);
+    const {
+        data: customers, meta, page, setPage, loading,
+        filters, setFilters,
+    } = usePaginatedList(fetchCustomersPage, {});
 
     const handleSearch = (value) => {
         setSearchTerm(value);
+        setPage(1);
     };
 
     const handleApplyFilters = (filterValues) => {
@@ -105,7 +95,7 @@ const CustomerOutstandingPage = () => {
                 <h1 className="text-3xl font-bold text-neutral-900">Customers Outstanding</h1>
                 <p className="text-neutral-500 mt-1">View customers with outstanding balances</p>
                 <p className="text-sm text-neutral-400 mt-1">
-                    {customers.length} customer{customers.length !== 1 ? 's' : ''} with outstanding balance
+                    {meta.count} customer{meta.count !== 1 ? 's' : ''} with outstanding balance
                 </p>
             </div>
 
@@ -155,11 +145,21 @@ const CustomerOutstandingPage = () => {
                     </p>
                 </div>
             ) : (
-                <Table
-                    columns={columns}
-                    data={customers}
-                    onRowClick={(customer) => navigate(`/billing/customers/${customer.id}`)}
-                />
+                <>
+                    <Table
+                        columns={columns}
+                        data={customers}
+                        onRowClick={(customer) => navigate(`/billing/customers/${customer.id}`)}
+                    />
+
+                    {meta.totalPages > 1 && (
+                        <Pagination
+                            currentPage={meta.currentPage}
+                            totalPages={meta.totalPages}
+                            onPageChange={setPage}
+                        />
+                    )}
+                </>
             )}
         </div>
     );

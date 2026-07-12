@@ -1,85 +1,81 @@
 import { useState, useEffect, useCallback } from 'react';
 import { purchasesApi } from '../services/purchasesApi';
+import { usePaginatedList } from './usePaginatedList';
 
-// Generic hook for CRUD operations
+// Generic hook for CRUD operations — thin wrapper around usePaginatedList.
 export const useCRUD = (service, initialFilters = {}) => {
-    const [data, setData] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [filters, setFilters] = useState(initialFilters);
+    const {
+        data, meta, loading: listLoading, error: listError,
+        filters, setFilters, page, setPage, refetch,
+    } = usePaginatedList((params) => service.getAll(params), initialFilters);
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        setError(null);
+    const [mutating, setMutating] = useState(false);
+    const [mutationError, setMutationError] = useState(null);
+
+    const create = async (payload) => {
+        setMutating(true);
         try {
-            const result = await service.getAll(filters);
-            setData(result);
-        } catch (err) {
-            setError(err.message || 'Failed to fetch data');
-        } finally {
-            setLoading(false);
-        }
-    }, [filters]);
-
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
-
-    const create = async (data) => {
-        setLoading(true);
-        try {
-            const result = await service.create(data);
-            await fetchData();
+            const result = await service.create(payload);
+            await refetch();
             return result;
         } catch (err) {
-            setError(err.message);
+            setMutationError(err.message);
             throw err;
         } finally {
-            setLoading(false);
+            setMutating(false);
         }
     };
 
-    const update = async (id, data) => {
-        setLoading(true);
+    const update = async (id, payload) => {
+        setMutating(true);
         try {
-            const result = await service.update(id, data);
-            await fetchData();
+            const result = await service.update(id, payload);
+            await refetch();
             return result;
         } catch (err) {
-            setError(err.message);
+            setMutationError(err.message);
             throw err;
         } finally {
-            setLoading(false);
+            setMutating(false);
         }
     };
 
     const deleteItem = async (id) => {
-        setLoading(true);
+        setMutating(true);
         try {
             await service.delete(id);
-            await fetchData();
+            // Deleted the last item on a page beyond page 1 — step back a page.
+            if (data.length === 1 && page > 1) {
+                setPage(page - 1);
+            } else {
+                await refetch();
+            }
         } catch (err) {
-            setError(err.message);
+            setMutationError(err.message);
             throw err;
         } finally {
-            setLoading(false);
+            setMutating(false);
         }
     };
 
     return {
         data,
-        loading,
-        error,
+        meta,
+        page,
+        setPage,
+        loading: listLoading || mutating,
+        error: listError || mutationError,
         filters,
         setFilters,
-        refetch: fetchData,
+        refetch,
         create,
         update,
         delete: deleteItem,
     };
 };
 
-// Hook for supplier outstanding
+// Hook for supplier outstanding — Suppliers are excluded from pagination
+// (client confirmed there are only ~10-15), so this stays a plain list fetch.
 export const useSuppliersOutstanding = (initialFilters = {}) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(false);

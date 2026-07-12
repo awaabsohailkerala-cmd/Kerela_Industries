@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { billingApi } from '../../services/billingApi';
 import InvoiceTable from '../../components/billing/InvoiceTable';
@@ -7,6 +7,8 @@ import Tabs from '../../components/ui/Tabs';
 import SearchBar from '../../components/ui/SearchBar';
 import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import Pagination from '../../components/ui/Pagination';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { useNavigate } from 'react-router-dom';
 
 const InvoicesPage = () => {
@@ -14,47 +16,25 @@ const InvoicesPage = () => {
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
     const navigate = useNavigate();
 
-    const [invoices, setInvoices] = useState([]);
-    const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [showFilters, setShowFilters] = useState(false);
-    const [filterValues, setFilterValues] = useState({});
 
-    const fetchInvoices = useCallback(async () => {
-        setLoading(true);
-        try {
-            const params = { ...filterValues };
-            if (searchTerm) {
-                params.bill_number = searchTerm;
-            }
-
-            let result;
-            switch (activeTab) {
-                case 'drafts':
-                    result = await billingApi.invoices.getDrafts(params);
-                    break;
-                case 'confirmed':
-                    result = await billingApi.invoices.getConfirmed(params);
-                    break;
-                case 'outstanding':
-                    result = await billingApi.invoices.getOutstanding(params);
-                    break;
-                default:
-                    result = await billingApi.invoices.getAll(params);
-            }
-            setInvoices(result || []);
-        } catch (error) {
-            console.error('Failed to fetch invoices:', error);
-            setInvoices([]);
-        } finally {
-            setLoading(false);
+    const fetchInvoicesPage = (params) => {
+        const p = { ...params };
+        if (searchTerm) p.bill_number = searchTerm;
+        switch (activeTab) {
+            case 'drafts': return billingApi.invoices.getDrafts(p);
+            case 'confirmed': return billingApi.invoices.getConfirmed(p);
+            case 'outstanding': return billingApi.invoices.getOutstanding(p);
+            default: return billingApi.invoices.getAll(p);
         }
-    }, [activeTab, filterValues, searchTerm]);
+    };
 
-    useEffect(() => {
-        fetchInvoices();
-    }, [fetchInvoices]);
+    const {
+        data: invoices, meta, page, setPage, loading,
+        filters: filterValues, setFilters: setFilterValues, refetch: fetchInvoices,
+    } = usePaginatedList(fetchInvoicesPage, {});
 
     const tabs = [
         { value: 'all', label: 'All Invoices' },
@@ -63,8 +43,14 @@ const InvoicesPage = () => {
         { value: 'outstanding', label: 'Outstanding' },
     ];
 
+    const handleTabChange = (tab) => {
+        setActiveTab(tab);
+        setPage(1);
+    };
+
     const handleSearch = (value) => {
         setSearchTerm(value);
+        setPage(1);
     };
 
     const handleApplyFilters = (newFilters) => {
@@ -203,7 +189,7 @@ const InvoicesPage = () => {
                 <Tabs
                     tabs={tabs}
                     activeTab={activeTab}
-                    onChange={setActiveTab}
+                    onChange={handleTabChange}
                 />
             </div>
 
@@ -217,6 +203,14 @@ const InvoicesPage = () => {
                 isAdmin={isAdmin}
                 showActions={true}
             />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
         </div>
     );
 };

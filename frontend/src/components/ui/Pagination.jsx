@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import PropTypes from 'prop-types';
 import Button from './Button';
@@ -8,6 +9,17 @@ const Pagination = ({
     onPageChange,
     className = '',
 }) => {
+    const [pageInput, setPageInput] = useState('');
+
+    const handleGoToPage = (e) => {
+        e.preventDefault();
+        const page = parseInt(pageInput, 10);
+        if (!isNaN(page)) {
+            onPageChange(Math.min(Math.max(page, 1), totalPages));
+        }
+        setPageInput('');
+    };
+
     const getPageNumbers = () => {
         const pages = [];
         const maxVisible = 5;
@@ -82,6 +94,21 @@ const Pagination = ({
                 >
                     Next
                 </Button>
+
+                <form onSubmit={handleGoToPage} className="flex gap-1 ml-2">
+                    <input
+                        type="number"
+                        min={1}
+                        max={totalPages}
+                        value={pageInput}
+                        onChange={(e) => setPageInput(e.target.value)}
+                        placeholder="Go to..."
+                        className="w-20 px-2 py-1 text-sm border border-neutral-200 rounded-lg outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
+                    />
+                    <Button type="submit" variant="secondary" size="sm">
+                        Go
+                    </Button>
+                </form>
             </div>
         </div>
     );

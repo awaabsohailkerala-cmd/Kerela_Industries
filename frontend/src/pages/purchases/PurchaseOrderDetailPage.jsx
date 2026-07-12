@@ -49,18 +49,22 @@ const PurchaseOrderDetailPage = () => {
             setOrder(orderData);
             setPaymentSummary(summaryData);
 
-            const [paymentsData, returnsData, pdfsData] = await Promise.all([
+            const [paymentsRes, returnsRes, pdfsData] = await Promise.all([
                 purchasesApi.payments.getByOrder(id).catch(() => []),
                 purchasesApi.returns.getByOrder(id).catch(() => []),
                 orderData?.status === 'confirmed'
                     ? purchasesApi.orders.getPDFs(id).catch(() => [])
                     : Promise.resolve([]),
             ]);
-            setPayments(paymentsData || []);
-            setReturns(returnsData || []);
+            // payments/returns endpoints now return paginated {results: [...]} objects
+            // instead of plain arrays; unwrap both shapes.
+            const paymentsData = Array.isArray(paymentsRes) ? paymentsRes : (paymentsRes?.results || []);
+            const returnsData = Array.isArray(returnsRes) ? returnsRes : (returnsRes?.results || []);
+            setPayments(paymentsData);
+            setReturns(returnsData);
             setPdfs(pdfsData || []);
 
-            const hasPending = (returnsData || []).some(r => r.status === 'pending');
+            const hasPending = returnsData.some(r => r.status === 'pending');
             setHasPendingReturn(hasPending);
         } catch (error) {
             console.error('Failed to fetch order details:', error);

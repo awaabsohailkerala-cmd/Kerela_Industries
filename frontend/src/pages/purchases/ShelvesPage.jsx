@@ -9,13 +9,14 @@ import SearchBar from '../../components/ui/SearchBar';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import Badge from '../../components/ui/Badge';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import Pagination from '../../components/ui/Pagination';
 import { useAuth } from '../../context/AuthContext';
 
 const ShelvesPage = () => {
     const { user } = useAuth();
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
 
-    const { data, loading, create, update, delete: deleteShelf } = useCRUD(
+    const { data, meta, page, setPage, loading, create, update, delete: deleteShelf } = useCRUD(
         purchasesApi.shelves
     );
 
@@ -151,6 +152,14 @@ const ShelvesPage = () => {
                 columns={columns}
                 data={filteredData}
             />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
 
             <Modal
                 isOpen={showModal}

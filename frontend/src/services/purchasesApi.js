@@ -4,7 +4,10 @@ import { api } from '../utils/api';
 export const purchasesApi = {
     // Categories
     categories: {
-        getAll: () => api.get('/categories/'),
+        getAll: (params = {}) => {
+            const query = new URLSearchParams(params).toString();
+            return api.get(`/categories/${query ? `?${query}` : ''}`);
+        },
         create: (data) => api.post('/categories/', data),
         update: (id, data) => api.patch(`/categories/${id}/`, data),
         delete: (id) => api.delete(`/categories/${id}/`),
@@ -12,7 +15,10 @@ export const purchasesApi = {
 
     // Shelves
     shelves: {
-        getAll: () => api.get('/shelves/'),
+        getAll: (params = {}) => {
+            const query = new URLSearchParams(params).toString();
+            return api.get(`/shelves/${query ? `?${query}` : ''}`);
+        },
         create: (data) => api.post('/shelves/', data),
         update: (id, data) => api.patch(`/shelves/${id}/`, data),
         delete: (id) => api.delete(`/shelves/${id}/`),
@@ -109,7 +115,10 @@ export const purchasesApi = {
             const query = new URLSearchParams(params).toString();
             return api.get(`/returns/${query ? `?${query}` : ''}`);
         },
-        getByOrder: (orderId) => api.get(`/orders/${orderId}/returns/`),
+        getByOrder: (orderId, params = {}) => {
+            const query = new URLSearchParams(params).toString();
+            return api.get(`/orders/${orderId}/returns/${query ? `?${query}` : ''}`);
+        },
         create: (orderId, data) => {
             // The backend expects 'order_id' and items with 'purchase_item_id'
             const payload = {

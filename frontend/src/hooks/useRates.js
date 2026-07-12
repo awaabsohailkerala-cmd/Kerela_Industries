@@ -1,117 +1,129 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ratesApi } from '../services/ratesApi';
 import { purchasesApi } from '../services/purchasesApi';
+import { usePaginatedList } from './usePaginatedList';
 
-// Every rate already carries its full product — start from that (works for
-// every role). Products with no rate yet are appended on top ONLY if the
-// caller has Purchases-app access (admin/superuser); normal users have none,
-// so that extra fetch is allowed to fail without breaking the rate list.
-const combineProductsWithRates = (products, rates) => {
-    const rateMap = {};
-    const combined = rates
-        .filter(rate => rate.product?.id)
-        .map(rate => {
-            rateMap[rate.product.id] = true;
-            return { product: rate.product, rate };
+// Client-side filtering applied to the best-effort "unpriced products" list,
+// mirroring the search/category filters that are sent to the backend for
+// the (paginated) rates list itself.
+const filterProducts = (products, filters) => {
+    let filtered = products;
+    if (filters.search) {
+        const searchLower = filters.search.toLowerCase();
+        filtered = filtered.filter(product =>
+            (product.name && product.name.toLowerCase().includes(searchLower)) ||
+            (product.code && product.code.toLowerCase().includes(searchLower))
+        );
+    }
+    if (filters.category) {
+        filtered = filtered.filter(product => {
+            const catId = product.category?.id || product.category;
+            return String(catId) === String(filters.category);
         });
-
-    products
-        .filter(product => !rateMap[product.id])
-        .forEach(product => combined.push({ product, rate: null }));
-
-    return combined;
+    }
+    return filtered;
 };
 
 export const useRates = (initialFilters = {}) => {
-    const [data, setData] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
-    const [filters, setFilters] = useState(initialFilters);
+    // Main rates table — paginated (25/page) like every other list endpoint.
+    const {
+        data: rates, meta, loading: listLoading, error: listError,
+        filters, setFilters, page, setPage, refetch,
+    } = usePaginatedList(ratesApi.getAll, initialFilters);
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            // Rates are viewable by every role; the full product list is
-            // Purchases-app-gated (admin/superuser only), so it's fetched
-            // best-effort and simply omitted for normal users.
-            const [ratesResult, productsResult] = await Promise.allSettled([
-                ratesApi.getAll(filters),
-                purchasesApi.products.getAll(),
-            ]);
-
-            if (ratesResult.status === 'rejected') {
-                throw ratesResult.reason;
-            }
-            const rates = ratesResult.value || [];
-            const products = productsResult.status === 'fulfilled' ? (productsResult.value || []) : [];
-
-            // Combine products with their rates
-            let combined = combineProductsWithRates(products, rates);
-
-            // Apply filters on the frontend
-            if (filters.search) {
-                const searchLower = filters.search.toLowerCase();
-                combined = combined.filter(item =>
-                    (item.product.name && item.product.name.toLowerCase().includes(searchLower)) ||
-                    (item.product.code && item.product.code.toLowerCase().includes(searchLower))
-                );
-            }
-            if (filters.category) {
-                combined = combined.filter(item => {
-                    const catId = item.product.category?.id || item.product.category;
-                    return String(catId) === String(filters.category);
-                });
-            }
-
-            setData(combined);
-        } catch (err) {
-            setError(err.message || 'Failed to fetch rates');
-            setData([]);
-        } finally {
-            setLoading(false);
-        }
-    }, [filters]);
+    // Rates are viewable by every role; the full product list is
+    // Purchases-app-gated (admin/superuser only), so it's fetched best-effort
+    // with page_size:500 (everything in one call) and simply stays empty for
+    // normal users. A full (page_size:500) rates fetch runs alongside it so
+    // "has a rate" can be determined across ALL rates, not just the current
+    // page — otherwise a product priced on another page would incorrectly
+    // show up again here as unpriced.
+    const [allProducts, setAllProducts] = useState([]);
+    const [allRatedProductIds, setAllRatedProductIds] = useState(new Set());
 
     useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+        let cancelled = false;
+        (async () => {
+            const [productsResult, allRatesResult] = await Promise.allSettled([
+                purchasesApi.products.getAll({ page_size: 500 }),
+                ratesApi.getAll({ page_size: 500 }),
+            ]);
+            if (cancelled) return;
+            const products = productsResult.status === 'fulfilled'
+                ? (productsResult.value?.results || productsResult.value || [])
+                : [];
+            const allRates = allRatesResult.status === 'fulfilled'
+                ? (allRatesResult.value?.results || allRatesResult.value || [])
+                : [];
+            setAllProducts(products);
+            setAllRatedProductIds(new Set(
+                allRates.filter(rate => rate.product?.id).map(rate => rate.product.id)
+            ));
+        })();
+        return () => { cancelled = true; };
+    }, []);
 
-    const create = async (data) => {
-        setLoading(true);
+    const productsWithoutRate = allProducts.filter(product => !allRatedProductIds.has(product.id));
+
+    // Current page of priced rates, followed by any (filtered) unpriced
+    // products — same ordering the old client-side combine used.
+    const data = [
+        ...rates.map(rate => ({ product: rate.product, rate })),
+        ...filterProducts(productsWithoutRate, filters),
+    ];
+
+    // Category filter dropdown derived from the FULL product catalog rather
+    // than the current page of rates, so options don't disappear/change as
+    // the user pages through the table.
+    const categories = [...new Map(
+        allProducts
+            .map(product => product.category)
+            .filter(Boolean)
+            .map(category => [category.id, category])
+    ).values()];
+
+    const [mutating, setMutating] = useState(false);
+    const [mutationError, setMutationError] = useState(null);
+
+    const create = async (payload) => {
+        setMutating(true);
         try {
-            const result = await ratesApi.create(data);
-            await fetchData();
+            const result = await ratesApi.create(payload);
+            await refetch();
             return result;
         } catch (err) {
-            setError(err.message);
+            setMutationError(err.message);
             throw err;
         } finally {
-            setLoading(false);
+            setMutating(false);
         }
     };
 
-    const update = async (id, data) => {
-        setLoading(true);
+    const update = async (id, payload) => {
+        setMutating(true);
         try {
-            const result = await ratesApi.update(id, data);
-            await fetchData();
+            const result = await ratesApi.update(id, payload);
+            await refetch();
             return result;
         } catch (err) {
-            setError(err.message);
+            setMutationError(err.message);
             throw err;
         } finally {
-            setLoading(false);
+            setMutating(false);
         }
     };
 
     return {
         data,
-        loading,
-        error,
+        meta,
+        page,
+        setPage,
+        loading: listLoading || mutating,
+        error: listError || mutationError,
         filters,
         setFilters,
-        refetch: fetchData,
+        categories,
+        refetch,
         create,
         update,
     };

@@ -16,6 +16,8 @@ import LineItemRow from '../../components/purchases/LineItemRow';
 import DraftPreview from '../../components/purchases/DraftPreview';
 import OrderStatusBadge from '../../components/purchases/OrderStatusBadge';
 import OrderPaymentStatusBadge from '../../components/purchases/OrderPaymentStatusBadge';
+import Pagination from '../../components/ui/Pagination';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
 import { useNavigate } from 'react-router-dom';
 
 const PurchaseOrdersPage = () => {
@@ -23,14 +25,27 @@ const PurchaseOrdersPage = () => {
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
     const navigate = useNavigate();
 
-    const [orders, setOrders] = useState([]);
-    const [loading, setLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('all');
     const [showCreateModal, setShowCreateModal] = useState(false);
-    const [filters, setFilters] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
     const [showFilters, setShowFilters] = useState(false);
     const [error, setError] = useState('');
+
+    const fetchOrdersPage = (params) => {
+        const p = { ...params };
+        if (searchTerm) p.order_number = searchTerm;
+        switch (activeTab) {
+            case 'drafts': return purchasesApi.orders.getDrafts(p);
+            case 'confirmed': return purchasesApi.orders.getConfirmed(p);
+            case 'outstanding': return purchasesApi.orders.getOutstanding(p);
+            default: return purchasesApi.orders.getAll(p);
+        }
+    };
+
+    const {
+        data: orders, meta, page, setPage, loading,
+        filters, setFilters, refetch: fetchOrders,
+    } = usePaginatedList(fetchOrdersPage, {});
 
     // Form state
     const [formData, setFormData] = useState({
@@ -55,52 +70,17 @@ const PurchaseOrdersPage = () => {
         loadInitialData();
     }, []);
 
-    useEffect(() => {
-        fetchOrders();
-    }, [activeTab, filters, searchTerm]);
-
     const loadInitialData = async () => {
         try {
+            // page_size override — dropdown needs every product, not just one page.
             const [productsRes, suppliersRes] = await Promise.all([
-                purchasesApi.products.getAll(),
+                purchasesApi.products.getAll({ page_size: 500 }),
                 purchasesApi.suppliers.getAll(),
             ]);
-            setProducts(productsRes || []);
+            setProducts(productsRes.results || productsRes || []);
             setSuppliers(suppliersRes || []);
         } catch (error) {
             console.error('Failed to load initial data:', error);
-        }
-    };
-
-    const fetchOrders = async () => {
-        setLoading(true);
-        try {
-            let data;
-            const params = { ...filters };
-
-            if (searchTerm) {
-                params.order_number = searchTerm;
-            }
-
-            switch (activeTab) {
-                case 'drafts':
-                    data = await purchasesApi.orders.getDrafts(params);
-                    break;
-                case 'confirmed':
-                    data = await purchasesApi.orders.getConfirmed(params);
-                    break;
-                case 'outstanding':
-                    data = await purchasesApi.orders.getOutstanding(params);
-                    break;
-                default:
-                    data = await purchasesApi.orders.getAll(params);
-            }
-            setOrders(data || []);
-        } catch (error) {
-            console.error('Failed to fetch orders:', error);
-            setOrders([]);
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -113,8 +93,14 @@ const PurchaseOrdersPage = () => {
         setSearchTerm('');
     };
 
+    const handleTabChange = (tab) => {
+        setActiveTab(tab);
+        setPage(1);
+    };
+
     const handleSearch = (value) => {
         setSearchTerm(value);
+        setPage(1);
     };
 
     const columns = [
@@ -410,7 +396,7 @@ const PurchaseOrdersPage = () => {
                 <Tabs
                     tabs={tabs}
                     activeTab={activeTab}
-                    onChange={setActiveTab}
+                    onChange={handleTabChange}
                 />
             </div>
 
@@ -419,6 +405,14 @@ const PurchaseOrdersPage = () => {
                 data={orders}
                 onRowClick={handleViewOrder}
             />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
 
             {orders.length === 0 && (
                 <div className="text-center py-12">

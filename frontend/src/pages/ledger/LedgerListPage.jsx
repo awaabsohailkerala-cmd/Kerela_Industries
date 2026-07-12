@@ -7,13 +7,14 @@ import LedgerListTable from '../../components/ledger/LedgerListTable';
 import SearchBar from '../../components/ui/SearchBar';
 import Button from '../../components/ui/Button';
 import LoadingSpinner from '../../components/ui/LoadingSpinner';
+import Pagination from '../../components/ui/Pagination';
 
 const LedgerListPage = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
 
-    const { data, loading, filters, setFilters, refetch } = useLedgerList();
+    const { data, meta, page, setPage, loading, filters, setFilters, refetch } = useLedgerList();
     const [searchTerm, setSearchTerm] = useState('');
 
     // Redirect normal users
@@ -73,6 +74,14 @@ const LedgerListPage = () => {
                 onRowClick={handleRowClick}
                 loading={loading}
             />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
         </div>
     );
 };

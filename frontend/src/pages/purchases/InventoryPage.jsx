@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { purchasesApi } from '../../services/purchasesApi';
+import { usePaginatedList } from '../../hooks/usePaginatedList';
 import Table from '../../components/ui/Table';
 import SearchBar from '../../components/ui/SearchBar';
 import Button from '../../components/ui/Button';
@@ -9,15 +10,14 @@ import Badge from '../../components/ui/Badge';
 import Card from '../../components/ui/Card';
 import Modal from '../../components/ui/Modal';
 import FilterBar from '../../components/ui/FilterBar';
+import Pagination from '../../components/ui/Pagination';
 
 const InventoryPage = () => {
-    const [inventory, setInventory] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [filters, setFilters] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
     const [categories, setCategories] = useState([]);
     const [shelves, setShelves] = useState([]);
     const [showFilters, setShowFilters] = useState(false);
+    const [totalStock, setTotalStock] = useState(0);
 
     // Detail modal state
     const [showDetailModal, setShowDetailModal] = useState(false);
@@ -25,46 +25,66 @@ const InventoryPage = () => {
     const [productDetail, setProductDetail] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
 
+    // Search is routed through the same query params as category/shelf
+    // filters — the backend supports search/category/shelf on this endpoint.
+    const fetchInventoryPage = (params) => {
+        const p = { ...params };
+        if (searchTerm) p.search = searchTerm;
+        return purchasesApi.inventory.getAll(p);
+    };
+
+    const {
+        data: inventory, meta, extra, page, setPage, loading,
+        filters, setFilters,
+    } = usePaginatedList(fetchInventoryPage, {});
+
     useEffect(() => {
         loadLookups();
     }, []);
 
+    // "Total Stock" (sum of quantity across the full filtered set) has no
+    // backend stats equivalent (the stats block only has total_products /
+    // low_stock / out_of_stock), so it's computed from a dedicated
+    // page_size:500 fetch mirroring the same filters — same workaround
+    // pattern used elsewhere for "need the full list, not just one page".
     useEffect(() => {
-        fetchInventory();
+        let cancelled = false;
+        const computeTotalStock = async () => {
+            try {
+                const params = { ...filters, page_size: 500 };
+                if (searchTerm) params.search = searchTerm;
+                const res = await purchasesApi.inventory.getAll(params);
+                const items = res?.results || res || [];
+                const sum = items.reduce((s, item) => s + (parseFloat(item.quantity) || 0), 0);
+                if (!cancelled) setTotalStock(sum);
+            } catch (error) {
+                if (!cancelled) setTotalStock(0);
+            }
+        };
+        computeTotalStock();
+        return () => { cancelled = true; };
     }, [filters, searchTerm]);
 
     const loadLookups = async () => {
         try {
-            const [cats, shelves] = await Promise.all([
-                purchasesApi.categories.getAll(),
-                purchasesApi.shelves.getAll(),
+            // page_size override — dropdown needs every category/shelf, not
+            // just one paginated page of them.
+            const [catsRes, shelvesRes] = await Promise.all([
+                purchasesApi.categories.getAll({ page_size: 500 }),
+                purchasesApi.shelves.getAll({ page_size: 500 }),
             ]);
+            const cats = catsRes?.results || catsRes || [];
+            const shelvesList = shelvesRes?.results || shelvesRes || [];
             setCategories(cats.filter(c => !c.is_deleted));
-            setShelves(shelves.filter(s => !s.is_deleted));
+            setShelves(shelvesList.filter(s => !s.is_deleted));
         } catch (error) {
             console.error('Failed to load lookups:', error);
         }
     };
 
-    const fetchInventory = async () => {
-        setLoading(true);
-        try {
-            const params = { ...filters };
-            if (searchTerm) {
-                params.search = searchTerm;
-            }
-            const data = await purchasesApi.inventory.getAll(params);
-            setInventory(data || []);
-        } catch (error) {
-            console.error('Failed to fetch inventory:', error);
-            setInventory([]);
-        } finally {
-            setLoading(false);
-        }
-    };
-
     const handleSearch = (value) => {
         setSearchTerm(value);
+        setPage(1);
     };
 
     const handleApplyFilters = (filterValues) => {
@@ -110,11 +130,11 @@ const InventoryPage = () => {
         }
     };
 
-    // Calculate summary stats from the data
-    const totalProducts = inventory.length;
-    const totalStock = inventory.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0);
-    const lowStockItems = inventory.filter(item => (parseFloat(item.quantity) || 0) <= 5 && (parseFloat(item.quantity) || 0) > 0).length;
-    const outOfStockItems = inventory.filter(item => (parseFloat(item.quantity) || 0) <= 0).length;
+    // Summary stats are computed server-side over the full filtered set
+    // (not just the current page) and passed through as an extra field.
+    const totalProducts = extra?.stats?.total_products ?? 0;
+    const lowStockItems = extra?.stats?.low_stock ?? 0;
+    const outOfStockItems = extra?.stats?.out_of_stock ?? 0;
 
     const columns = [
         {
@@ -235,6 +255,14 @@ const InventoryPage = () => {
                 data={inventory}
                 onRowClick={handleRowClick}
             />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
 
             {inventory.length === 0 && !loading && (
                 <div className="text-center py-12">

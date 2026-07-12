@@ -8,9 +8,13 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import Table from '../../components/ui/Table';
 import Badge from '../../components/ui/Badge';
+import Pagination from '../../components/ui/Pagination';
 
 const ExpenseCategoriesPage = () => {
-    const { data: categories, loading, create, update, delete: deleteCategory, refetch } = useExpenseCategories();
+    const {
+        data: categories, meta, page, setPage, loading,
+        create, update, delete: deleteCategory, refetch,
+    } = useExpenseCategories();
 
     const [showModal, setShowModal] = useState(false);
     const [editingCategory, setEditingCategory] = useState(null);
@@ -122,6 +126,14 @@ const ExpenseCategoriesPage = () => {
             </div>
 
             <Table columns={columns} data={categories} />
+
+            {meta.totalPages > 1 && (
+                <Pagination
+                    currentPage={meta.currentPage}
+                    totalPages={meta.totalPages}
+                    onPageChange={setPage}
+                />
+            )}
 
             {/* Create/Edit Modal */}
             <Modal

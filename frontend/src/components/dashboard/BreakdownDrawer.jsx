@@ -8,10 +8,11 @@ import Button from '../ui/Button';
 import Select from '../ui/Select';
 import Input from '../ui/Input';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import Pagination from '../ui/Pagination';
 import DirectionBadge from './DirectionBadge';
 
 const BreakdownDrawer = ({ isOpen, onClose, title, type, initialFilters = {} }) => {
-    const { data, loading, filters, setFilters, refetch } = useBreakdown(type, initialFilters);
+    const { data, meta, page, setPage, loading, filters, setFilters, refetch } = useBreakdown(type, initialFilters);
     const [localFilters, setLocalFilters] = useState(initialFilters);
 
     useEffect(() => {
@@ -127,8 +128,8 @@ const BreakdownDrawer = ({ isOpen, onClose, title, type, initialFilters = {} }) 
                                     </svg>
                                 </button>
                             </div>
-                            {data.length > 0 && (
-                                <p className="text-sm text-neutral-500">{data.length} records found</p>
+                            {meta.count > 0 && (
+                                <p className="text-sm text-neutral-500">{meta.count} records found</p>
                             )}
                         </div>
 
@@ -183,7 +184,16 @@ const BreakdownDrawer = ({ isOpen, onClose, title, type, initialFilters = {} }) 
                                     <p className="text-sm text-neutral-500 mt-1">Try adjusting your filters</p>
                                 </div>
                             ) : (
-                                <Table columns={columns} data={data} />
+                                <>
+                                    <Table columns={columns} data={data} />
+                                    {meta.totalPages > 1 && (
+                                        <Pagination
+                                            currentPage={meta.currentPage}
+                                            totalPages={meta.totalPages}
+                                            onPageChange={setPage}
+                                        />
+                                    )}
+                                </>
                             )}
                         </div>
                     </motion.div>
