@@ -62,7 +62,7 @@ const PurchaseOrderDetailPage = () => {
             const returnsData = Array.isArray(returnsRes) ? returnsRes : (returnsRes?.results || []);
             setPayments(paymentsData);
             setReturns(returnsData);
-            setPdfs(pdfsData || []);
+            setPdfs(Array.isArray(pdfsData) ? pdfsData : (pdfsData?.results || []));
 
             const hasPending = returnsData.some(r => r.status === 'pending');
             setHasPendingReturn(hasPending);

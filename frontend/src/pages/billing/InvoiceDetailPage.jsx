@@ -63,7 +63,7 @@ const InvoiceDetailPage = () => {
             const returnsList = returnsData?.results ?? returnsData ?? [];
             setPayments(paymentsList);
             setReturns(returnsList);
-            setPdfs(pdfsData || []);
+            setPdfs(pdfsData?.results ?? pdfsData ?? []);
 
             // Check if there's a pending return
             const hasPending = returnsList.some(r => r.status === 'pending');
