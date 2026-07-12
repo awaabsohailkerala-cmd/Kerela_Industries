@@ -25,6 +25,35 @@ from .services import (
 )
 
 
+def _paginate_entries(entries: list, request) -> dict:
+    """
+    Manual page-number pagination for an already-materialized list.
+    entries has its running balance computed cumulatively over the FULL
+    history, so it must stay a plain Python list — this only slices it for
+    display. Same response shape as StandardResultsSetPagination.
+    """
+    try:
+        page_size = min(int(request.query_params.get("page_size", 25)), 500)
+    except (TypeError, ValueError):
+        page_size = 25
+    try:
+        page = max(int(request.query_params.get("page", 1)), 1)
+    except (TypeError, ValueError):
+        page = 1
+
+    count = len(entries)
+    total_pages = max(-(-count // page_size), 1)  # ceil division
+    start = (page - 1) * page_size
+
+    return {
+        "count": count,
+        "total_pages": total_pages,
+        "current_page": page,
+        "page_size": page_size,
+        "results": entries[start:start + page_size],
+    }
+
+
 class SupplierLedgerListView(generics.ListAPIView):
     """
     GET /ledger/
@@ -65,12 +94,14 @@ class SupplierLedgerDetailView(APIView):
             min_amount = p.get("min_amount"),
             max_amount = p.get("max_amount"),
         )
+        paginated = _paginate_entries(entries, request)
         data = {
             "ledger"          : SupplierLedgerReadSerializer(ledger).data,
-            "entries"         : LedgerEntrySerializer(entries, many=True).data,
             "closing_balance" : closing_balance,
             "date_from"       : p.get("date_from"),
             "date_to"         : p.get("date_to"),
+            **paginated,
+            "results"         : LedgerEntrySerializer(paginated["results"], many=True).data,
         }
         return Response(data)
 
@@ -95,12 +126,14 @@ class SupplierLedgerBySupplierView(APIView):
             min_amount = p.get("min_amount"),
             max_amount = p.get("max_amount"),
         )
+        paginated = _paginate_entries(entries, request)
         data = {
             "ledger"          : SupplierLedgerReadSerializer(ledger).data,
-            "entries"         : LedgerEntrySerializer(entries, many=True).data,
             "closing_balance" : closing_balance,
             "date_from"       : p.get("date_from"),
             "date_to"         : p.get("date_to"),
+            **paginated,
+            "results"         : LedgerEntrySerializer(paginated["results"], many=True).data,
         }
         return Response(data)
 

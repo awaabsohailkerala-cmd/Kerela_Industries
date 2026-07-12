@@ -143,6 +143,9 @@ class ShelfRetrieveUpdateDestroyView(ReadWriteSerializerMixin, generics.Retrieve
 # ---------------------------------------------------------------------------
 
 class SupplierListCreateView(ReadWriteSerializerMixin, generics.ListCreateAPIView):
+    # Excluded from pagination — client confirmed suppliers are a small,
+    # bounded list (~10-15 rows), so paginating it is pure overhead.
+    pagination_class       = None
     permission_classes     = [IsAdminOrSuperuser]
     read_serializer_class  = SupplierReadSerializer
     write_serializer_class = SupplierWriteSerializer
@@ -594,6 +597,11 @@ class InventoryListView(generics.ListAPIView):
         search      : product name or code (partial match)
         category    : category id
         shelf       : shelf id
+
+    Response (paginated):
+        {"count": int, "total_pages": int, "current_page": int, "page_size": int,
+         "stats": {"total_products": int, "low_stock": int, "out_of_stock": int},
+         "results": [...]}
     """
     permission_classes = [IsAdminOrSuperuserOrReadOnly]
     serializer_class   = InventoryReadSerializer
@@ -605,6 +613,23 @@ class InventoryListView(generics.ListAPIView):
             category_id = p.get("category"),
             shelf_id    = p.get("shelf"),
         )
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        # stats are computed over the FULL filtered queryset, before pagination
+        # slices it down to one page — used by the Inventory page and the
+        # Normal User Dashboard summary cards.
+        stats = {
+            "total_products": queryset.count(),
+            "low_stock": queryset.filter(quantity__gt=0, quantity__lte=5).count(),
+            "out_of_stock": queryset.filter(quantity__lte=0).count(),
+        }
+
+        page = self.paginate_queryset(queryset)
+        serializer = self.get_serializer(page, many=True)
+        response = self.get_paginated_response(serializer.data)
+        response.data["stats"] = stats
+        return response
 
 
 class InventoryRetrieveView(generics.RetrieveAPIView):
