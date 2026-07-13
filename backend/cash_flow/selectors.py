@@ -41,8 +41,9 @@ def get_cashflow_stats() -> dict:
         "total_purchases_cash"          : cf.total_purchases_cash,
         "total_number_of_purchases"     : PurchaseOrder.objects.filter(
                                               is_deleted=False,
+                                              is_data_entry=False,
                                               status="confirmed",
-                                          ).exclude(supplier__code="SYS-OPENING").count(),
+                                          ).count(),
 
         # Expenses
         "total_expenses_amount"     : cf.total_expenses_amount,
@@ -440,12 +441,14 @@ def get_purchases_breakdown(
     """
     from purchases.models import PurchaseOrder
 
-    # Opening-balance POs (real suppliers) count as purchase value and reconcile
-    # with total_purchases_cash. Only opening-STOCK (SYS-OPENING) is excluded.
+    # Opening balances are carried-forward payables, not operating-period
+    # purchases — excluded here (mirrors the invoices breakdown on the sales
+    # side). is_data_entry=False also covers opening stock (SYS-OPENING).
     qs = PurchaseOrder.objects.filter(
         is_deleted=False,
+        is_data_entry=False,
         status="confirmed",
-    ).exclude(supplier__code="SYS-OPENING").select_related("supplier")
+    ).select_related("supplier")
 
     if _clean(supplier_name):
         qs = qs.filter(supplier__name__icontains=_clean(supplier_name))

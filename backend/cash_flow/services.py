@@ -351,12 +351,13 @@ def sync_advance_payment_updated(*, old_amount: Decimal, new_amount: Decimal, us
 def sync_data_entry_supplier_opening_balance(*, amount: Decimal, user) -> None:
     """
     Data-entry bootstrap: records a supplier opening balance (what we owed a
-    supplier before go-live). Mirrors a confirmed purchase: we owe them more,
-    and total purchase value increases. No cash movement.
+    supplier before go-live). A carried-forward payable only — it is NOT a
+    purchase made in the operating period, so ONLY supplier_payable_outstanding
+    increases. total_purchases_cash is deliberately untouched, mirroring the
+    customer side (sync_data_entry_customer_opening_balance). No cash movement.
     """
     _adjust_cashflow(
         supplier_payable_outstanding_delta = +amount,
-        total_purchases_cash_delta         = +amount,
         user=user,
     )
 
