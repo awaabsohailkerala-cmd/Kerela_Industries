@@ -29,7 +29,7 @@ export const ledgerApi = {
     savePDF: (id, data) => api.post(`/ledger/${id}/pdf/save/`, data),
 
     // Get saved PDFs
-    getSavedPDFs: (id) => api.get(`/ledger/${id}/pdf/`),
+    getSavedPDFs: (id, params) => api.get(`/ledger/${id}/pdf/`, { params }),
 
     // Delete saved PDF
     deleteSavedPDF: (pdfId) => api.delete(`/ledger/pdf/${pdfId}/`),

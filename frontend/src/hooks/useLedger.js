@@ -86,8 +86,8 @@ export const useSavedPDFs = (ledgerId) => {
         setLoading(true);
         setError(null);
         try {
-            const result = await ledgerApi.getSavedPDFs(ledgerId);
-            setData(result || []);
+            const result = await ledgerApi.getSavedPDFs(ledgerId, { page_size: 500 });
+            setData(result?.results ?? result ?? []);
         } catch (err) {
             setError(err.message || 'Failed to fetch saved PDFs');
             setData([]);
